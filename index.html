@@ -2,29 +2,583 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>升级（80分 / 拖拉机）— 人机对战</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>升级（80分 / 拖拉机） — 策略训练器</title>
+<!-- FontAwesome 6 -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<!-- Google Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+/* ============================================================
+   CSS Custom Properties & Global Theme
+   ============================================================ */
 :root {
-  --bg-root:#080c18; --bg-surface:#0d1325; --bg-elevated:#111b2e;
-  --bg-glass:rgba(14,20,38,0.78); --border-subtle:rgba(255,255,255,0.06);
-  --border-mid:rgba(255,255,255,0.10); --cyan:#00e5ff; --cyan-dim:rgba(0,229,255,0.15);
-  --purple:#b44dff; --purple-dim:rgba(180,77,255,0.14); --pink:#ff2d95;
-  --green:#00e676; --gold:#ffd740; --red:#ff5252; --orange:#ff9100;
-  --text-primary:#e2e6ed; --text-secondary:#9aa8b8; --text-dim:#5e6d80;
+  --bg-root: #080c18;
+  --bg-surface: #0d1325;
+  --bg-elevated: #111b2e;
+  --bg-glass: rgba(14, 20, 38, 0.78);
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-mid: rgba(255,255,255,0.10);
+  --cyan: #00e5ff;
+  --cyan-dim: rgba(0,229,255,0.15);
+  --purple: #b44dff;
+  --purple-dim: rgba(180,77,255,0.14);
+  --pink: #ff2d95;
+  --green: #00e676;
+  --gold: #ffd740;
+  --red: #ff5252;
+  --text-primary: #e2e6ed;
+  --text-secondary: #9aa8b8;
+  --text-dim: #5e6d80;
+  --card-w: 68px;
+  --card-h: 96px;
+  --radius-lg: 16px;
+  --radius-md: 11px;
+  --radius-sm: 7px;
+  --transition-fast: 0.18s ease;
+  --transition-smooth: 0.28s ease;
 }
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{font-size:14px;overflow:hidden;height:100%}
-body{
-  font-family:'Inter','Noto Sans SC',sans-serif;
-  background:var(--bg-root);color:var(--text-primary);
-  height:100vh;overflow:hidden;
-  display:flex;flex-direction:column;
-  -webkit-font-smoothing:antialiased;
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: 'Inter', 'Noto Sans SC', sans-serif;
+  background: var(--bg-root);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
 }
-body::before{
+
+/* Game mode: full viewport takeover */
+body.in-game {
+  height: 100vh; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+body.in-game .top-nav { display: none; }
+body.in-game .main-content { flex: 1; min-height: 0; padding: 0; max-width: none; margin: 0; overflow: hidden; }
+body.in-game .site-footer { display: none; }
+body.in-game .panel.active#panel-game { display: flex; flex-direction: column; height: 100%; }
+/* Ambient background glow */
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 15% 15%, rgba(0,229,255,0.035) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 50%, rgba(180,77,255,0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 85%, rgba(255,45,149,0.025) 0%, transparent 50%);
+}
+
+/* ============================================================
+   TOP NAVIGATION BAR
+   ============================================================ */
+.top-nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10, 15, 28, 0.88);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 16px;
+}
+.nav-inner {
+  max-width: 1400px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 56px;
+}
+.nav-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 800; font-size: 18px; color: #fff;
+  white-space: nowrap;
+}
+.nav-brand i { color: var(--cyan); font-size: 22px; }
+.nav-brand span {
+  background: linear-gradient(135deg, var(--cyan), #80deea);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.nav-tabs {
+  display: flex; gap: 4px; align-items: center;
+}
+.nav-tab {
+  padding: 8px 18px; border-radius: 22px;
+  font-size: 13.5px; font-weight: 600;
+  cursor: pointer; border: 1.5px solid transparent;
+  background: transparent; color: var(--text-secondary);
+  transition: all var(--transition-smooth);
+  white-space: nowrap;
+  font-family: inherit;
+  display: flex; align-items: center; gap: 6px;
+}
+.nav-tab:hover { color: #fff; background: rgba(255,255,255,0.04); }
+.nav-tab.active {
+  background: linear-gradient(135deg, var(--cyan-dim), rgba(180,77,255,0.10));
+  border-color: rgba(0,229,255,0.35);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(0,229,255,0.10);
+}
+.nav-tab i { font-size: 13px; }
+
+/* ===== Game Launcher (prominent entry below nav) ===== */
+.game-launcher {
+  display: flex; justify-content: center; align-items: center;
+  padding: 5px 0 7px;
+  background: linear-gradient(90deg,
+    rgba(0,229,255,0.03) 0%,
+    rgba(180,77,255,0.05) 40%,
+    rgba(255,45,149,0.03) 70%,
+    rgba(0,229,255,0.03) 100%);
+  border-top: 1px solid rgba(0,229,255,0.06);
+}
+.game-launch-btn {
+  padding: 7px 30px; border-radius: 22px;
+  font-size: 13.5px; font-weight: 700; cursor: pointer;
+  font-family: inherit;
+  background: linear-gradient(135deg, rgba(0,229,255,0.18), rgba(180,77,255,0.16));
+  border: 1.5px solid rgba(0,229,255,0.35);
+  color: #fff;
+  transition: all 0.22s ease;
+  display: flex; align-items: center; gap: 7px;
+  box-shadow: 0 0 16px rgba(0,229,255,0.08);
+  position: relative; overflow: hidden;
+}
+.game-launch-btn::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 30%, rgba(255,255,255,0.04) 50%, transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+}
+.game-launch-btn:hover {
+  background: linear-gradient(135deg, rgba(0,229,255,0.28), rgba(180,77,255,0.24));
+  border-color: rgba(0,229,255,0.55);
+  box-shadow: 0 0 28px rgba(0,229,255,0.18), 0 0 40px rgba(180,77,255,0.08);
+  transform: translateY(-1px);
+}
+.game-launch-btn:hover::after { transform: translateX(100%); }
+.game-launch-btn i { font-size: 15px; color: var(--cyan); }
+.game-launch-btn.active {
+  background: linear-gradient(135deg, var(--cyan-dim), rgba(180,77,255,0.14));
+  border-color: rgba(0,229,255,0.45);
+  box-shadow: 0 0 22px rgba(0,229,255,0.14);
+}
+body.in-game .game-launcher { display: none; }
+
+/* Mobile nav scroll */
+@media (max-width: 720px) {
+  .nav-inner { flex-direction: column; height: auto; gap: 6px; padding: 8px 0; }
+  .nav-tabs { overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .nav-tab { padding: 6px 13px; font-size: 12px; flex-shrink: 0; }
+  .nav-brand { font-size: 16px; }
+}
+
+/* ============================================================
+   MAIN CONTENT AREA
+   ============================================================ */
+.main-content {
+  max-width: 1400px; margin: 0 auto; padding: 20px 18px 40px;
+  position: relative; z-index: 1;
+}
+.panel { display: none; animation: panelFadeIn 0.32s ease; }
+.panel.active { display: block; }
+
+
+@keyframes panelFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   RULES PANELS — Two-column: TOC sidebar + Content
+   ============================================================ */
+.rules-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 22px;
+  align-items: start;
+}
+
+/* TOC Sidebar */
+.toc-sidebar {
+  position: sticky; top: 72px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 18px 14px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+.toc-sidebar::-webkit-scrollbar { width: 4px; }
+.toc-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 8px; }
+.toc-title {
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--cyan); margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.toc-list { list-style: none; }
+.toc-item {
+  display: block; padding: 4px 6px 4px 0;
+  font-size: 12.5px; color: var(--text-secondary);
+  text-decoration: none; border-radius: 4px;
+  transition: all var(--transition-fast); cursor: pointer;
+  line-height: 1.45; border-left: 2px solid transparent;
+}
+.toc-item:hover { color: #fff; background: rgba(255,255,255,0.03); }
+.toc-item.active { color: var(--cyan); border-left-color: var(--cyan); background: rgba(0,229,255,0.04); }
+.toc-item.l2 { padding-left: 14px; font-size: 11.5px; }
+.toc-item.l3 { padding-left: 26px; font-size: 11px; color: var(--text-dim); }
+.toc-item.l4 { padding-left: 36px; font-size: 10.5px; color: var(--text-dim); }
+
+/* TOC toggle for mobile */
+.toc-toggle {
+  display: none; width: 100%; padding: 10px 14px; border-radius: 22px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border-mid); background: var(--bg-glass);
+  color: var(--text-secondary); font-family: inherit;
+  text-align: left; margin-bottom: 14px;
+  backdrop-filter: blur(10px);
+}
+.toc-toggle i { margin-right: 6px; color: var(--cyan); }
+
+/* Markdown Content */
+.md-content {
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 30px 34px;
+  min-width: 0;
+}
+/* Markdown typography */
+.md-content h1 { font-size: 28px; font-weight: 900; margin: 0 0 6px 0; color: #fff; }
+.md-content h1:not(:first-child) { margin-top: 32px; border-top: 1px solid var(--border-subtle); padding-top: 28px; }
+.md-content h2 {
+  font-size: 21px; font-weight: 800; margin: 28px 0 10px 0;
+  color: var(--cyan); scroll-margin-top: 72px;
+  padding-bottom: 6px; border-bottom: 1px solid rgba(0,229,255,0.12);
+}
+.md-content h3 {
+  font-size: 17px; font-weight: 700; margin: 22px 0 8px 0;
+  color: #cbd5e0; scroll-margin-top: 72px;
+}
+.md-content h4 { font-size: 15px; font-weight: 600; margin: 16px 0 6px 0; color: #a0aec0; }
+.md-content p { font-size: 14px; line-height: 1.75; margin: 8px 0; color: #bcc8d4; }
+.md-content ul, .md-content ol { padding-left: 22px; margin: 8px 0; color: #bcc8d4; font-size: 14px; }
+.md-content li { margin-bottom: 4px; line-height: 1.65; }
+.md-content li::marker { color: var(--cyan); }
+.md-content strong { color: #e8ecf2; font-weight: 700; }
+.md-content em { color: #c0c8d4; }
+.md-content blockquote {
+  border-left: 3px solid var(--purple); padding: 10px 16px; margin: 12px 0;
+  background: rgba(180,77,255,0.06); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: #b0b8c8; font-style: italic;
+}
+.md-content blockquote p { margin: 0; }
+.md-content code {
+  font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+  background: rgba(0,0,0,0.35); padding: 1px 6px; border-radius: 4px;
+  color: var(--pink);
+}
+.md-content pre {
+  background: rgba(0,0,0,0.45); padding: 14px 18px; border-radius: var(--radius-sm);
+  overflow-x: auto; margin: 10px 0; border: 1px solid var(--border-subtle);
+}
+.md-content pre code { background: none; padding: 0; color: #bcc8d4; }
+.md-content table {
+  width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px;
+}
+.md-content th {
+  background: rgba(0,229,255,0.08); color: var(--cyan);
+  padding: 8px 12px; text-align: center; font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.md-content td {
+  padding: 7px 12px; text-align: center; border: 1px solid rgba(255,255,255,0.04);
+  color: #b0bcc8;
+}
+.md-content tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+.md-content hr { border: none; border-top: 1px solid var(--border-subtle); margin: 20px 0; }
+.md-content a { color: var(--cyan); text-decoration: underline; }
+.md-content img { max-width: 100%; border-radius: var(--radius-sm); }
+
+/* Responsive rules layout */
+@media (max-width: 860px) {
+  .rules-layout { grid-template-columns: 1fr; }
+  .toc-sidebar { display: none; position: static; max-height: none; }
+  .toc-sidebar.open { display: block; margin-bottom: 14px; }
+  .toc-toggle { display: block; }
+  .md-content { padding: 18px 16px; }
+  .md-content h1 { font-size: 22px; }
+  .md-content h2 { font-size: 18px; }
+  .md-content h3 { font-size: 15px; }
+}
+@media (max-width: 480px) {
+  .md-content { padding: 14px 12px; }
+}
+
+/* ============================================================
+   SIMULATOR PANEL
+   ============================================================ */
+.sim-wrapper {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px; align-items: start;
+}
+@media (max-width: 960px) {
+  .sim-wrapper { grid-template-columns: 1fr; }
+}
+
+.glass-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+/* Scenario list */
+.scenario-list { display: flex; flex-direction: column; gap: 8px; }
+.scenario-item {
+  padding: 12px 15px; border-radius: var(--radius-sm);
+  cursor: pointer; border: 1.5px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.015);
+  transition: all var(--transition-smooth);
+}
+.scenario-item:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.12); }
+.scenario-item.active {
+  background: linear-gradient(135deg, var(--cyan-dim), rgba(180,77,255,0.08));
+  border-color: rgba(0,229,255,0.30);
+  box-shadow: 0 0 16px rgba(0,229,255,0.08);
+}
+.scenario-item .sc-name { font-size: 14px; font-weight: 700; color: #e0e4ec; }
+.scenario-item .sc-cat {
+  font-size: 11px; color: var(--text-dim); margin-top: 2px;
+  display: flex; align-items: center; gap: 4px;
+}
+.scenario-item .sc-cat i { font-size: 10px; }
+.scenario-item.active .sc-name { color: #fff; }
+.scenario-item.active .sc-cat { color: var(--cyan); }
+
+/* Game board */
+.game-board {
+  background: linear-gradient(145deg, #0b1717 0%, #0e1c1c 40%, #0b1616 100%);
+  border: 1px solid rgba(0,229,255,0.10);
+  border-radius: var(--radius-md);
+  padding: 18px;
+}
+.game-context { font-size: 13px; color: #b0bcc8; line-height: 1.7; margin-bottom: 12px; }
+.game-info-row {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;
+}
+.info-pill {
+  padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08);
+}
+.info-pill.trump { color: var(--gold); border-color: rgba(255,215,64,0.2); }
+.info-pill.level { color: var(--cyan); border-color: rgba(0,229,255,0.2); }
+.info-pill.role { color: var(--purple); border-color: rgba(180,77,255,0.2); }
+.info-pill i { margin-right: 3px; }
+
+.section-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--text-dim); margin: 12px 0 6px;
+  display: flex; align-items: center; gap: 5px;
+}
+
+/* Cards container */
+.cards-row {
+  display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 0;
+}
+
+/* Poker card */
+.poker-card {
+  width: var(--card-w); height: var(--card-h);
+  background: #fafafa;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.20);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  cursor: default; transition: all 0.22s ease;
+  position: relative; user-select: none; flex-shrink: 0;
+  font-family: 'Inter', 'Noto Sans SC', sans-serif;
+}
+.poker-card:hover { transform: translateY(-4px); box-shadow: 0 7px 20px rgba(0,0,0,0.28); }
+.poker-card .rank-center { font-size: 21px; font-weight: 800; line-height: 1; }
+.poker-card .suit-center { font-size: 26px; line-height: 1; margin-top: -2px; }
+.poker-card .rank-corner {
+  position: absolute; top: 4px; left: 5px;
+  font-size: 10px; font-weight: 700;
+}
+.poker-card .suit-corner {
+  position: absolute; top: 15px; left: 6px; font-size: 9px;
+}
+.poker-card.red { color: #c62828; }
+.poker-card.black { color: #1a1a1a; }
+.poker-card.joker-red {
+  color: #c62828;
+  background: linear-gradient(135deg, #fff 0%, #ffebee 100%);
+}
+.poker-card.joker-black {
+  color: #1a1a1a;
+  background: linear-gradient(135deg, #fff 0%, #e8eaf0 100%);
+}
+.poker-card.joker-red .rank-center,
+.poker-card.joker-black .rank-center { font-size: 14px; font-weight: 900; }
+
+/* Compact cards for large hands */
+.cards-row.compact .poker-card {
+  --card-w: 50px; --card-h: 72px;
+}
+.cards-row.compact .poker-card .rank-center { font-size: 16px; }
+.cards-row.compact .poker-card .suit-center { font-size: 20px; }
+.cards-row.compact .poker-card .rank-corner { font-size: 8px; top: 2px; left: 3px; }
+.cards-row.compact .poker-card .suit-corner { font-size: 7px; top: 10px; left: 4px; }
+
+@media (max-width: 480px) {
+  .cards-row.compact .poker-card { --card-w: 38px; --card-h: 56px; }
+  .cards-row.compact .poker-card .rank-center { font-size: 13px; }
+  .cards-row.compact .poker-card .suit-center { font-size: 16px; }
+}
+
+/* Action buttons */
+.actions-row { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
+.action-btn {
+  flex: 1; min-width: 120px; padding: 11px 16px; border-radius: 22px;
+  font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
+  border: 2px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.03); color: #ccc;
+  transition: all var(--transition-smooth); text-align: center;
+}
+.action-btn:hover { background: rgba(255,255,255,0.07); border-color: var(--cyan); color: #fff; }
+.action-btn.highlight-correct {
+  background: rgba(0,230,118,0.16); border-color: var(--green) !important;
+  color: var(--green) !important; box-shadow: 0 0 20px rgba(0,230,118,0.16);
+}
+.action-btn.highlight-wrong {
+  background: rgba(255,82,82,0.16); border-color: var(--red) !important;
+  color: var(--red) !important; box-shadow: 0 0 20px rgba(255,82,82,0.16);
+}
+.action-btn:disabled { opacity: 0.50; pointer-events: none; }
+
+/* Feedback */
+.feedback-box {
+  margin-top: 14px; padding: 16px 18px; border-radius: var(--radius-sm);
+  background: rgba(0,0,0,0.25); border-left: 3px solid var(--cyan);
+  animation: fadeSlideIn 0.32s ease;
+}
+.feedback-box.correct { border-left-color: var(--green); }
+.feedback-box.wrong { border-left-color: var(--red); }
+.feedback-box .fb-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.feedback-box .fb-body { font-size: 13px; line-height: 1.7; color: #bcc8d4; }
+.feedback-box .fb-source { font-size: 11px; color: var(--text-dim); margin-top: 8px; }
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scenario navigation */
+.sim-nav-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 12px; gap: 8px;
+}
+.sim-nav-btn {
+  padding: 7px 16px; border-radius: 18px;
+  font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.02); color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+.sim-nav-btn:hover { border-color: #fff; color: #fff; }
+.sim-nav-btn i { font-size: 10px; }
+
+/* ============================================================
+   FORUM PANEL
+   ============================================================ */
+.forum-wrapper {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px; align-items: start;
+}
+@media (max-width: 860px) { .forum-wrapper { grid-template-columns: 1fr; } }
+
+.dev-notice {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 13px; border-radius: 18px; font-size: 11px; font-weight: 700;
+  background: linear-gradient(135deg, rgba(180,77,255,0.18), rgba(255,45,149,0.12));
+  color: var(--pink); border: 1px solid rgba(255,45,149,0.20);
+}
+.forum-post-list { display: flex; flex-direction: column; gap: 8px; }
+.forum-post {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px; border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.04);
+  transition: all var(--transition-fast); cursor: pointer;
+}
+.forum-post:hover { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.10); }
+.fp-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px; color: #fff;
+}
+.fp-avatar.av1 { background: linear-gradient(135deg, #00acc1, #00838f); }
+.fp-avatar.av2 { background: linear-gradient(135deg, #7c4dff, #6200ea); }
+.fp-avatar.av3 { background: linear-gradient(135deg, #ff5252, #c62828); }
+.fp-avatar.av4 { background: linear-gradient(135deg, #ff9100, #e65100); }
+.fp-body { flex: 1; min-width: 0; }
+.fp-title { font-size: 14px; font-weight: 600; color: #e0e4ec; margin-bottom: 3px; }
+.fp-meta { font-size: 11px; color: var(--text-dim); display: flex; gap: 12px; flex-wrap: wrap; }
+.fp-tag {
+  font-size: 10px; padding: 2px 8px; border-radius: 10px;
+  background: rgba(0,229,255,0.08); color: var(--cyan); flex-shrink: 0; margin-top: 2px;
+}
+
+.forum-side-inner { display: flex; flex-direction: column; gap: 14px; }
+.forum-compose {
+  padding: 16px; border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.05);
+}
+.forum-compose h4 { font-size: 13px; margin-bottom: 8px; color: #ccc; }
+.forum-compose textarea {
+  width: 100%; min-height: 66px; padding: 10px; border-radius: 6px;
+  background: rgba(0,0,0,0.30); border: 1px solid rgba(255,255,255,0.08);
+  color: #ddd; font-family: inherit; font-size: 13px; resize: vertical;
+}
+.forum-compose textarea::placeholder { color: #4a5568; }
+.forum-compose .btn-submit {
+  margin-top: 8px; padding: 8px 20px; border-radius: 18px; font-size: 13px; font-weight: 600;
+  cursor: pointer; border: none; font-family: inherit;
+  background: linear-gradient(135deg, var(--cyan), #008f9e);
+  color: #000; transition: all var(--transition-smooth);
+}
+.forum-compose .btn-submit:hover { box-shadow: 0 0 22px rgba(0,229,255,0.30); }
+
+.forum-stats {
+  padding: 14px 16px; border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.012); border: 1px solid rgba(255,255,255,0.04);
+}
+.forum-stats h4 { font-size: 13px; margin-bottom: 6px; color: #bbb; }
+.stat-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); padding: 3px 0; }
+.stat-row span:last-child { color: var(--cyan); font-weight: 600; }
+.db-schema {
+  margin-top: 10px; font-size: 10px; color: var(--text-dim); line-height: 1.6;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 4px;
+}
+.db-schema strong { color: var(--purple); }
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.site-footer {
+  text-align: center; padding: 18px 20px; font-size: 12px;
+  color: var(--text-dim); border-top: 1px solid var(--border-subtle);
+  position: relative; z-index: 1;
+}
+
+
+
+/* ==================== GAME CSS ==================== */
+body.in-game::before{
   content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   background:radial-gradient(ellipse at 15% 15%,rgba(0,229,255,0.03) 0%,transparent 50%),
     radial-gradient(ellipse at 85% 60%,rgba(180,77,255,0.035) 0%,transparent 50%);
@@ -115,34 +669,34 @@ body::before{
 .hand-row .card-count{font-size:10px;color:var(--text-dim);margin-left:4px}
 
 /* === POKER CARD (compact) === */
-.poker-card{
+body.in-game .poker-card{
   width:44px;height:62px;background:#fafafa;border-radius:4px;
   box-shadow:0 1px 3px rgba(0,0,0,0.15);display:flex;flex-direction:column;
   align-items:center;justify-content:center;cursor:pointer;
   transition:all 0.15s ease;position:relative;user-select:none;flex-shrink:0;
   font-family:'Inter','Noto Sans SC',sans-serif;border:2px solid transparent;
 }
-.poker-card:hover{transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,0.2)}
-.poker-card.selected{
+body.in-game .poker-card:hover{transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,0.2)}
+body.in-game .poker-card.selected{
   transform:translateY(-6px);border-color:var(--cyan)!important;
   box-shadow:0 0 14px rgba(0,229,255,0.3),0 6px 14px rgba(0,0,0,0.25);
 }
-.poker-card.played{cursor:default}
-.poker-card.played:hover{transform:none;box-shadow:0 1px 3px rgba(0,0,0,0.15)}
-.poker-card .rk{font-size:15px;font-weight:800;line-height:1}
-.poker-card .st{font-size:18px;line-height:1;margin-top:-1px}
-.poker-card .rk-c{position:absolute;top:2px;left:3px;font-size:7px;font-weight:700}
-.poker-card .st-c{position:absolute;top:10px;left:4px;font-size:6px}
-.poker-card.red{color:#c62828}
-.poker-card.black{color:#1a1a1a}
-.poker-card.jr{color:#c62828;background:linear-gradient(135deg,#fff 0%,#ffebee 100%)}
-.poker-card.jb{color:#1a1a1a;background:linear-gradient(135deg,#fff 0%,#e8eaf0 100%)}
-.poker-card.jr .rk,.poker-card.jb .rk{font-size:9px;font-weight:900}
-.poker-card.dimmed{opacity:0.45}
-.poker-card.invalid{opacity:0.55;cursor:not-allowed}
+body.in-game .poker-card.played{cursor:default}
+body.in-game .poker-card.played:hover{transform:none;box-shadow:0 1px 3px rgba(0,0,0,0.15)}
+body.in-game .poker-card .rk{font-size:15px;font-weight:800;line-height:1}
+body.in-game .poker-card .st{font-size:18px;line-height:1;margin-top:-1px}
+body.in-game .poker-card .rk-c{position:absolute;top:2px;left:3px;font-size:7px;font-weight:700}
+body.in-game .poker-card .st-c{position:absolute;top:10px;left:4px;font-size:6px}
+body.in-game .poker-card.red{color:#c62828}
+body.in-game .poker-card.black{color:#1a1a1a}
+body.in-game .poker-card.jr{color:#c62828;background:linear-gradient(135deg,#fff 0%,#ffebee 100%)}
+body.in-game .poker-card.jb{color:#1a1a1a;background:linear-gradient(135deg,#fff 0%,#e8eaf0 100%)}
+body.in-game .poker-card.jr .rk,body.in-game .poker-card.jb .rk{font-size:9px;font-weight:900}
+body.in-game .poker-card.dimmed{opacity:0.45}
+body.in-game .poker-card.invalid{opacity:0.55;cursor:not-allowed}
 
 /* Face-down card */
-.card-back{
+body.in-game .card-back{
   width:44px;height:62px;border-radius:4px;flex-shrink:0;
   background:linear-gradient(135deg,#1a3a4a 0%,#0d2130 50%,#152a38 100%);
   border:1px solid rgba(0,229,255,0.12);
@@ -215,12 +769,12 @@ body::before{
 
 /* Responsive fine-tuning */
 @media (max-width:700px){
-  .poker-card{width:36px;height:50px}
-  .poker-card .rk{font-size:12px}
-  .poker-card .st{font-size:14px}
-  .poker-card .rk-c{font-size:6px;top:1px;left:2px}
-  .poker-card .st-c{font-size:5px;top:7px;left:3px}
-  .card-back{width:36px;height:50px;font-size:10px}
+  body.in-game .poker-card{width:36px;height:50px}
+  body.in-game .poker-card .rk{font-size:12px}
+  body.in-game .poker-card .st{font-size:14px}
+  body.in-game .poker-card .rk-c{font-size:6px;top:1px;left:2px}
+  body.in-game .poker-card .st-c{font-size:5px;top:7px;left:3px}
+  body.in-game .card-back{width:36px;height:50px;font-size:10px}
   .center-layout{grid-template-columns:70px 1fr 70px}
   .ctrl-btn{padding:4px 10px;font-size:10px}
 }
@@ -228,6 +782,143 @@ body::before{
 </head>
 <body>
 
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <i class="fa-solid fa-cards"></i>
+      <span>升级·80分·拖拉机</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-panel="panel-basic" onclick="switchPanel('panel-basic')">
+        <i class="fa-solid fa-book"></i> 基础规则
+      </button>
+      <button class="nav-tab" data-panel="panel-advanced" onclick="switchPanel('panel-advanced')">
+        <i class="fa-solid fa-lightbulb"></i> 进阶规则
+      </button>
+      <button class="nav-tab" data-panel="panel-sim" onclick="switchPanel('panel-sim')">
+        <i class="fa-solid fa-gamepad"></i> 情景模拟
+      </button>
+      <button class="nav-tab" data-panel="panel-forum" onclick="switchPanel('panel-forum')">
+        <i class="fa-solid fa-comments"></i> 社区
+      </button>
+    </div>
+  </div>
+  <div class="game-launcher">
+    <button class="game-launch-btn" data-panel="panel-game" onclick="switchPanel('panel-game')">
+      <i class="fa-solid fa-gamepad"></i> 实战对局 — 立即开局
+    </button>
+  </div>
+</nav>
+
+<!-- ============================================================
+     MAIN CONTENT CONTAINER
+     ============================================================ -->
+<main class="main-content">
+
+  <!-- ===== PANEL: 基础规则 ===== -->
+  <section class="panel active" id="panel-basic">
+    <div class="rules-layout">
+      <aside class="toc-sidebar" id="tocBasic">
+        <div class="toc-title"><i class="fa-solid fa-list-ul"></i> 目录</div>
+        <ul class="toc-list" id="tocBasicList"></ul>
+      </aside>
+      <button class="toc-toggle" id="tocBasicToggle" onclick="toggleTOC('tocBasic')">
+        <i class="fa-solid fa-bars"></i> 显示目录
+      </button>
+      <div class="md-content" id="mdBasicContent"></div>
+    </div>
+  </section>
+
+  <!-- ===== PANEL: 进阶规则 ===== -->
+  <section class="panel" id="panel-advanced">
+    <div class="rules-layout">
+      <aside class="toc-sidebar" id="tocAdvanced">
+        <div class="toc-title"><i class="fa-solid fa-list-ul"></i> 目录</div>
+        <ul class="toc-list" id="tocAdvancedList"></ul>
+      </aside>
+      <button class="toc-toggle" id="tocAdvancedToggle" onclick="toggleTOC('tocAdvanced')">
+        <i class="fa-solid fa-bars"></i> 显示目录
+      </button>
+      <div class="md-content" id="mdAdvancedContent"></div>
+    </div>
+  </section>
+
+  <!-- ===== PANEL: 情景模拟器 ===== -->
+  <section class="panel" id="panel-sim">
+    <div class="sim-wrapper">
+      <!-- Scenario list -->
+      <div class="glass-card">
+        <div style="font-size:15px;font-weight:700;margin-bottom:10px;color:#fff;">
+          <i class="fa-solid fa-list-check" style="color:var(--cyan);"></i> 情景列表
+        </div>
+        <div class="scenario-list" id="scenarioList"></div>
+        <div class="sim-nav-row">
+          <button class="sim-nav-btn" onclick="prevScenario()"><i class="fa-solid fa-chevron-left"></i> 上一个</button>
+          <span style="font-size:12px;color:var(--text-dim);" id="scenarioCounter"></span>
+          <button class="sim-nav-btn" onclick="nextScenario()"><i class="fa-solid fa-chevron-right"></i> 下一个</button>
+        </div>
+      </div>
+      <!-- Game board -->
+      <div>
+        <div class="game-board" id="gameBoard">
+          <div class="game-context" id="simContext"></div>
+          <div class="game-info-row" id="simInfo"></div>
+          <div class="section-label"><i class="fa-solid fa-hand"></i> 你的手牌 <span style="font-weight:400;color:var(--text-dim);">（25张）</span></div>
+          <div class="cards-row compact" id="simHand"></div>
+          <div id="simPlayedSection" style="display:none;">
+            <div class="section-label"><i class="fa-solid fa-table"></i> 已出牌面</div>
+            <div class="cards-row compact" id="simPlayed"></div>
+          </div>
+          <div class="actions-row" id="simActions"></div>
+        </div>
+        <div id="simFeedback"></div>
+        <button id="simResetBtn" style="display:none;margin-top:10px;padding:8px 18px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.02);color:var(--text-secondary);font-family:inherit;transition:all 0.25s;"
+          onclick="resetSimulator()"><i class="fa-solid fa-rotate-left"></i> 重新选择</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== PANEL: 社区讨论 ===== -->
+  <section class="panel" id="panel-forum">
+    <div style="margin-bottom:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <h2 style="font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px;">
+        <i class="fa-solid fa-comments" style="color:var(--cyan);"></i> 社区讨论区
+      </h2>
+      <span class="dev-notice"><i class="fa-solid fa-hard-hat"></i> 开发中 · 后续接入后端</span>
+    </div>
+    <div class="forum-wrapper">
+      <div class="forum-post-list" id="forumPostList"></div>
+      <div class="forum-side-inner">
+        <div class="forum-compose">
+          <h4><i class="fa-solid fa-pen-to-square"></i> 发表新帖</h4>
+          <textarea placeholder="分享你的牌局心得或提问…（演示UI，暂不存储）"></textarea>
+          <button class="btn-submit" onclick="alert('🚧 论坛功能正在开发中，敬请期待！\n\n后续将支持：\n• 发帖/回帖/点赞/收藏\n• 牌局复盘分享与讨论\n• 段位排行榜\n• 实时对战约局')">
+            <i class="fa-solid fa-paper-plane"></i> 发布（演示）
+          </button>
+        </div>
+        <div class="forum-stats">
+          <h4><i class="fa-solid fa-chart-bar"></i> 社区统计</h4>
+          <div class="stat-row"><span>🃏 牌局复盘</span><span>12,847</span></div>
+          <div class="stat-row"><span>💬 策略讨论</span><span>8,392</span></div>
+          <div class="stat-row"><span>👥 活跃牌友</span><span>3,215</span></div>
+          <div class="stat-row"><span>🏆 今日对局</span><span>506</span></div>
+          <div class="db-schema">
+            <strong>数据模型</strong>（扩展预留）<br>
+            posts { id, title, content, author_id, tags[], likes, replies, created_at, scenario_ref }<br>
+            users { id, username, avatar_url, rank, level, joined_at }<br>
+            comments { id, post_id, author_id, content, created_at, parent_id }
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ===== PANEL: 实战对局 ===== -->
+  <section class="panel" id="panel-game">
 <!-- TOP BAR -->
 <div class="top-bar">
   <div class="brand"><i class="fa-solid fa-cards"></i><span>升级·80分·拖拉机</span></div>
@@ -293,8 +984,1536 @@ body::before{
 
 <!-- MODAL AREA -->
 <div id="modalArea"></div>
+  </section>
 
+</main>
+
+<footer class="site-footer">
+  <p>升级（80分/拖拉机/双升）策略训练器 v2.0 · 基于进阶打法连载整理 · Tab 架构 · 社区功能开发中</p>
+</footer>
+
+<!-- ============================================================
+     HIDDEN MARKDOWN CONTENT
+     ============================================================ -->
+<script type="text/markdown" id="md-basic-rules">
+# 升级（80分 / 拖拉机 / 双升）游戏规则
+
+## 一、游戏概述
+
+升级，又叫80分、拖拉机、双升或双抠，是一种四人扑克牌对抗游戏。四位玩家分为两队，对家为同一队。游戏的目标是通过抓取分牌和抠底得分，不断升级，最终率先达到最高级别（A牌）的队伍获胜。
+
+## 二、牌具与人数
+
+- **人数**：4人，分为两队（对家为同队）
+- **牌数**：使用两副扑克牌，共108张，包括大小王
+
+## 三、分值与牌型
+
+### 分牌
+
+| 牌面 | 每张分值 |
+| :--: | :------: |
+|  5  |   5分   |
+|  10  |   10分   |
+|  K  |   10分   |
+
+> 两副牌共 **200分**。
+
+### 牌型
+
+- 单张
+- 对子（两张相同点数的牌）
+- 连对（拖拉机，即连续多对）
+
+## 四、主牌、副牌与级牌
+
+### 主牌
+
+在本局游戏中，被特别指定为"主"的牌。包括：
+
+- 大小王（无花色）
+- 当前局次的**级牌**（无论花色）
+- **主花色**的所有牌（即定主时确定的花色的牌）
+
+### 副牌
+
+除了主牌以外的其他所有牌。
+
+### 级牌
+
+级牌是当前庄家队伍的等级对应的牌点数。
+
+> **例**：当前庄家是6级，那么所有点数为6的牌（不论红桃6、方片6、黑桃6、梅花6）都是级牌。
+
+级牌在每一局中自动作为主牌的一部分（即使不是主花色，也算主牌）。
+
+### 级牌与升级的关系
+
+- 游戏开始时双方从 **2级** 起步。
+- 随着比赛进行，根据得分结果，庄家队伍逐步向 **A（14级）** 升级。
+- 当前的级数决定了本局的级牌。
+
+> **例**：庄家是8级，本局级牌是8，所有的8点牌都是主牌。达到A之后继续赢牌，则可以继续"反主"或直接赢得比赛。
+
+## 五、游戏流程
+
+### 5.1 发牌与底牌
+
+每人发25张，剩余8张作为底牌。
+
+### 5.2 确定庄家
+
+- 游戏开始时，双方从2级起步。
+- 上一局胜利的庄家继续当庄家。
+- 如果闲家得分达到规定标准（**80分及以上**），则闲家反庄，成为新的庄家队伍。
+
+### 5.3 亮主与定主（确定主花色）
+
+目的：确定本局使用的主花色（如红桃、黑桃等）。
+
+**亮主规则：**
+
+在发牌过程中，任何玩家都可以通过亮出特定牌（级牌、王）来争夺主花色。级牌由当前庄家等级确定，闲家也可亮出庄家等级对应的级牌确定主花色。
+
+**亮主的优先级（从低到高）：**
+
+|  优先级  | 牌型     |
+| :-------: | :------- |
+| 1（最低） | 单张级牌 |
+|     2     | 一对级牌 |
+|     3     | 一对小王 |
+| 4（最高） | 一对大王 |
+
+**主花色的确定：**
+
+- 最先亮出的花色为主花色。
+- 后亮的玩家可以用更高优先级的牌强行改主，直至发牌结束。
+
+### 5.4 扣底
+
+庄家拿到底牌后，再扣出8张组成新底牌。
+
+闲家通过在最后一轮胜出扣底：
+
+| 扣底牌型                      | 底牌分数倍数 |
+| :---------------------------- | :----------: |
+| 普通抠底（单张赢最后一墩）    |     ×2     |
+| 对子扣底（对子赢最后一墩）    |     ×4     |
+| 拖拉机扣底（n连对赢最后一墩） |    ×2^(n+1)    |
+
+> **例**：
+>
+> - 用2连对拖拉机（7♠7♠ + 8♠8♠）抠底，翻 2^3 = **8倍**
+> - 用3连对拖拉机（7♠7♠ + 8♠8♠ + 9♠9♠）抠底，翻 2^4 = **16倍**
+
+### 5.5 出牌规则
+
+#### 出牌顺序
+
+- **第一轮牌**由庄家方首先出牌。
+- 各方都出牌后计算获胜方，**下一轮牌由获胜方首先出牌**。
+
+#### 出牌要求
+
+每轮首出玩家可以出任意牌型。跟牌玩家需要遵循：
+
+- **有首出花色的牌时**，必须出首出花色的牌。
+- **首出花色为副牌，且手上没有首出花色的牌时**，可以：
+  - 出主牌进行"**毙牌**"（强行压制）
+  - 出别的副牌进行"**贴牌**"（放弃本轮）
+
+#### 拖拉机与对的跟牌规则
+
+- 如果首家出牌中**包含拖拉机**，则其它方如果有**同花色的拖拉机**，必须出拖拉机。
+- 如果首家出牌中**包含对**，则其它方如果有**同花色的对**，必须出对。
+- 如果首家出牌中包含了拖拉机或对时，其它方试图用主牌毙时**也必须出相应数量的拖拉机和对**（即毙牌的牌型必须与首出牌型匹配）。
+
+#### 毙牌
+
+若首出花色为副牌花色，且手上没有首出花色的牌，用**主牌**强行压制对手。
+
+**毙牌条件：**
+
+- 必须没有首出花色的牌，才能出主牌。
+- 出的主牌，牌型必须与首出牌型匹配才能毙（如首出**对子**，必须用**对子主牌**才能毙；若首出副牌**拖拉机**，也必须用**主牌拖拉机**才能毙）。
+- 毙牌时，主牌天然大于副牌，无论点数大小。
+
+#### 贴牌
+
+若首出花色为副牌花色，且手上没有首出花色的牌，可出别的副牌进行"贴牌"——贴牌永远是最小的。若队友牌大，可通过贴副牌上的分来进行跑分（技巧性）。
+
+#### 特别注意
+
+- 如果手上既有首出花色的单张，又有主牌，**必须先打首出花色**，不能直接用主牌毙。
+- 拖拉机跟牌也需要跟出尽量完整的拖拉机，否则按最大可能跟出（如没有拖拉机但有对子，则出对子）。
+
+### 5.6 得分与升级
+
+每轮由赢得该轮的玩家所属队伍收取分牌。游戏结束后结算分数：
+
+|  闲家得分  | 结果                              |
+| :--------: | :-------------------------------- |
+|    0分    | 庄家升**3级**               |
+|  5–35分  | 庄家升**2级**               |
+|  40–75分  | 庄家升**1级**               |
+|    80分    | 庄家下庄，闲家上庄（不升级）      |
+| 85–115分 | 庄家下庄，闲家上庄（不升级）      |
+| 120–155分 | 庄家下庄，闲家上庄升**1级** |
+| 160–195分 | 庄家下庄，闲家上庄升**2级** |
+|   200分   | 庄家下庄，闲家上庄升**3级** |
+
+> 以40分为一级类推。新一局按最新级别打，新的级牌随之变化。
+
+### 5.7 打牌中的规则（出错处理与牌面管理）
+
+#### 5.7.1 出错牌
+
+出错牌包括：吃错、跟错、垫错、甩错。按下列方式认定：
+
+**(a) 一般出错：**
+
+- 凡对方已经出牌，出错者不得再收回。
+- 若不是花色错误（即出了同花色但牌型/点数有误），比赛照常进行。
+- 若是**花色错误**（即有这门花色却错吃、错跟或错垫），比赛立即结束：
+  - 如**坐庄方出错**：换庄，抓分方上台，不升级。
+  - 如**抓分方出错**：坐庄方升 1 级。
+
+**(b) 甩错牌：**
+
+甩错牌指甩牌时别人手中还有更大的牌，导致甩不下去。
+
+- **罚分：** 罚分数 = 10 × n，其中 n 为甩错的牌数。
+- 罚分后，甩错者出该花色中**最小的牌**。
+
+#### 5.7.2 放牌与查牌
+
+- 每轮出牌时，除台下得分的牌（5、10、K）放在底牌上外，每个人都将自己已经出过的牌放在**自己面前**。
+- 打牌过程中，除自己的牌可查外，**不得查其他三家的牌**。
+
+## 六、主牌与副牌的大小规则
+
+- 在任何情况下，**主牌的大小都压制副牌**，不论点数（该情况一般发生在"毙牌"的时候）。
+
+### 主牌内部的大小顺序（从大到小）
+
+1. **大王** 最大
+2. **小王**
+3. **主花色的级牌**
+4. **其他花色的级牌**
+5. **主花色的普通牌**（按点数：2最小 → A最大）
+
+> - 主花色的级牌 > 其他花色的级牌
+> - 其他花色的级牌 > 主花色的普通牌
+> - 主花色的普通牌之间按牌点大小比较：2 < 3 < 4 < 5 < 6 < 7 < 8 < 9 < 10 < J < Q < K < A
+
+### 副牌之间
+
+仅按照点数大小比较，2最小 → A最大，**花色对大小没有影响**。
+
+## 七、拖拉机详细规则
+
+### 组成拖拉机必须满足
+
+1. 花色一致
+2. 点数连续
+3. 每对都是两张相同点数的牌
+4. 必须全部是主牌或全部是副牌，**主副不能混合**
+
+### 主牌内部的特殊拖拉机
+
+| 组合                    |               是否构成拖拉机               |
+| :---------------------- | :----------------------------------------: |
+| 小王 + 大王             |               ✅ 主牌拖拉机               |
+| 主花色级牌 + 副花色级牌 |          ✅（如红桃77 + 梅花77）          |
+| 主花色级牌 + 小王       |         ✅（如红桃77 + 小王小王）         |
+| 副花色级牌 + 小王       |              ❌ 不构成拖拉机              |
+| 级牌的相邻牌            | ✅（如级牌7，则红桃66 + 红桃88，副牌同理） |
+
+## 八、胜负条件
+
+- 率先达到 **A（14级）** 的队伍获胜。
+- 或者在约定时间/局数内，级别更高的一队获胜。
+</script>
+
+<script type="text/markdown" id="md-advanced-rules">
+# 升级（80分 / 双升）进阶打法指南
+
+> 本文整理自升级打法连载系列，去除广告、点击量、日期等无关信息，保留核心策略内容并按章节重排。
+
+---
+
+## 总纲
+
+> **要凶凶到底，要稳稳到头。**
+
+两种打法：一为阳刚（清主、强攻），一为阴柔（后发制人、以静制动）。
+
+---
+
+## 一、庄家打法
+
+### 1.1 清主打法（阳刚）
+
+阳刚打法，用孙子兵法来说是**先发制人**。最注重的是清主。
+
+**何时清主：**
+- **四个以上主对**：毫不犹豫上手就打主对，一连四对后外面基本没主。切记起了两手主对后勿打单张，否则给别人机会。
+- **三个主对 + 正王**：义无反顾上手就清主。
+- **三个主对无正王**：可上手就清主，也可先单吊两三圈主再清主（推荐后者）。
+- **两个主对**：一般不选清主，留对来杀闲家的副对。若要清主，先单吊三四圈后再清。
+
+**注意：** 主打光后被别家上手甩副对，庄家只有干瞪眼。破法：起手主对前尽量不要起手副牌，这样别人不知道你断什么。打光主对后可再甩几个主出去迷惑对手——**上善伐兵，攻心为上**。
+
+### 1.2 投石问路（阴柔）
+
+用孙子兵法来说是**后发制人**。比如手上是 K 一对加一个小对子——如果自己上手冲 K 一对，很容易被对方 A 对抓。选择让步，等别人先出，坐收渔翁之利。
+
+**AK 牌型的处理：**
+- 一门副牌是 AK，不要先打 A（K 容易被抓）。等人家先出 A，再出 AK 效果会好很多。
+- AK + 对子：等别人出了 A 以后，先出 AK 再打对子，容易破掉比自己大的对子。
+- 好处：不出 A，别人主观认为 A 不在你手里，会自己冲分到你手上。
+- 一门副牌中有 10 以上的对子：先不出，免得暴露，以不动制主动。
+
+### 1.3 大对子的打法
+
+**AKK + 对子：**
+先打 K 一对，确定外面没对子后出 A + 另外一个对子。
+- 打三张闲家断的可能性比两张断大很多，避免第二个对子被杀的厄运。
+- 如果别人手上还有对子，自己手上的 A 又能大一手，多了一手出牌机会。
+
+**AAK + 对子：**
+先出一个 K——暗示对家你手上留的是 A 一对，让对家出这门来让你接手（"暗示牌"）。
+
+**单 K 一对，想破别人 A 一对：**
+- 方法一：上手打一张 Q，破了 A 一对，K 一对就安全了。
+- 方法二（高阶）：吃准了是 A 一对时，破自己 K 一对，出单 K。有些人舍不得破自己 K 一对；就算被 A 吃了一张 K，也只吃一张而非两张，是赚的。
+
+**庄家杀闲家副对子时**，一手只有 15 分，庄家完全可以选择不杀。
+
+### 1.4 A（尖）的作用
+
+A 的四个作用：跑对家分、找信号、**进手**、**压制副牌**。
+
+- 找信号是最低级的用法，却用得最滥。
+- A 留在手里不打，作用和下底差不多：削弱敌家甩牌威力、浪费敌家进手。
+- 有 A 在手多一个大概率的进手，多出很多出牌选择余地——这是 A 下底所不具备的。
+
+### 1.5 打无主（将）时的庄家
+
+- 要**藏牌**、学会**拆牌**（如 AA 拆单 A 出，藏一张 A）。
+- 庄家的藏牌是出于全局考虑；攻庄的藏牌是为了控制，尤其是知道庄家的长门。
+- 打无主牌时，**占据主动是第一要义**。要把自己能打完的牌全打完，再考虑让对家上手。让敌家上手打出长套就悔之无及。
+
+### 1.6 大光条件
+
+14 张以上主牌（其中有三对以上），只有一门强副（有两大对以上），大光不需要对家的任何帮助。
+
+> **教训案例：** 手上有小王对、主 2 对、另有 77、33 对共 14 张主。副牌红 A、黑 A、草花 AAKJJ9766。打完黑红两张 A 后打草花 K——应 **22 调主**，告知对家强调主！敌不下大王后再 2 掉，再 4 对清光主，最后甩草花完成大光。
+
+### 1.7 如何扣（扎）底牌
+
+> 底牌铺完，这局牌的胜负也就决定了。
+
+1. **通常情况下，一定要绝一门副牌**——这是和对家过桥的通道。
+2. 三门副牌都好、主少且无主牌分 → **先把主牌绝掉**。
+3. 没有分的副牌，不可留对（即便是一对 Q 也扣掉），否则一手出去可能丢五十分。
+4. 主不强，分多的副牌不扣没关系，**一定要绝掉分少的副牌**。
+
+**底线原则：**
+| 主牌情况 | 策略 |
+|:--------|:----|
+| 主 ≥13 张，三对硬对 | 副好就多绝门，副不好就绝分 |
+| 主 <13 张，两对 | 把没分的副绝掉，底最多放 5 分。切忌留没分的小对；副扣不完就留两张或一张（哪怕是分），别人出副时垫掉 |
+| 主很少 | 用副保底（至少留两对），要和对家配合默契，保证第一时间牌权传到你手里 |
+
+> 掌握上述秘诀，30 秒钟的扣牌时间足以奠定局面：大胜奔大光，小胜奔小光；危难锁 75，败局锁 115。
+
+### 1.8 其他要点
+
+**首攻：**
+- 难牌：拔尖问应牌。
+- 干净牌：立即强拔净赢张，能一次净手的副牌（无论单张还是小对）可先腾空。
+- 变数大的牌：副牌不动，先小调一张以静制动。
+
+**出牌：**
+- 有 AK 带一对的副牌：先出一张小牌。
+- 有一对 10 或一对 K：不可乱冲，先出保护性单张引诱敌人下大牌。
+- 带一对 A 的拖拉机：不可先出。
+
+**杀牌：**
+- 上家出单张或一小对付牌：不杀。
+- 上家出你扣分多的副牌：不杀。
+
+**庄家第一次出牌：** 如果有一门你自己不能将这门打完（或只留一张、或不能将对家这门打完），就先别动这门，留给别人上手去打。尤其是该门副还有分时。
+
+**敌家出断门副对时：** 如果判断 10、K 不成对，可以不杀——敌家没法加分，你安全逃两个闲张，也给对家机会。
+
+**AKK / AAK：** AKK 单出 A 看对家信号；AAK 单出 K，对家若有 K 应打信号。
+
+**主牌散打时：** 没出过对，注意控制倒数第 4、3 个主，防止双扣。
+
+---
+
+## 二、帮庄方（对家）打法
+
+> 升级的学问，全在于帮庄，这是鉴别高手的唯一渠道。
+
+### 2.1 创造更多机会
+
+**例：** 庄家持有副牌 A、K、QQ、JJ、1010、9、7、6、5、3。
+
+**最佳打法：先出 A1010！** 多提供两种机会：
+1. 对家这门少于三张（显示缺门）→ 接着出单张给对家将吃，提供上手机会。
+2. 有可能打掉这门的 A → 接着出 KQQJJ 跑掉 45 分。
+
+即使以上都没发生，继续打 QQJJ，没有任何损失，凭空多了两个机会。
+
+### 2.2 帮庄十六原则
+
+1. **千万不要替庄家亮牌**，除非 13 张以上带 A 带对。
+2. 开牌后**不惜一切代价争取上手**，然后冲大牌，不可藏大牌，更不能藏 A。
+3. 庄家首攻副牌 A，自己有 A 要以全局为重，出 9、J、Q 应牌告诉对方你有 A，**绝不可贪便宜加分**。
+4. 出完大牌后，无**百分百把握不可甩牌**。
+5. 除非需要断门，否则**绝对不可以捅庄家断门**。捅断门是敌人的事情，咱们上手捅对门 = 三打一，庄家不得不浪费主牌，容易失控被抠底。
+6. **帮庄家调主是首要职责**，但开局和中局很忌讳用对调。自己的主光了无法帮调主时，出庄家有的副牌帮助庄家跑副。
+7. 庄家无法保底自然不会扣分，切记：**绝不可留大牌帮庄家保底**。
+8. 庄家出长套，你要**从中间出牌**，再从大往小出，以免影响庄家甩牌。
+9. 敌人出你断门，即便庄家能杀，**你也要先杀**，绝不可自己跑副牌。
+10. 在中局，**不要往庄家断门出副牌小对**。
+11. 要**第一时间接过庄家的牌，再传给庄家**。
+12. 不是大的对，尤其是庄家没有花色的不要出。
+13. 庄家出过第二轮牌、无副分跑掉时，帮庄小对可以出。
+14. **不要吝啬你的大主**，因为你是保驾的。
+15. 手里剩 5 张以内时要出副牌，以免中了别人副牌双扣（尤其还没出过对牌时）。
+16. 硬主多时用硬主调主减轻庄家负担，**切忌把硬主抱在手里**。
+
+### 2.3 帮庄方藏牌条件
+
+1. 某门牌庄方已没分（如帮方打了 AAK 或 A，庄方垫了该副牌的 2 张分或 K）→ 帮方的副 A 可以藏。
+2. 庄方出 A 时，帮家有 AKQJ105 可以**不给信号**而垫 10 和 5。
+3. 努力树庄方的大主、主对、副长套。庄方 +22（常主）对，你即使有 22 王王亦须在调主时拆开单掉（防止撞车）。庄 AAK 副先 K，你上手后有 KQQ 应拆打 K、Q、Q。
+4. **无条件服从攻防转移**，努力上手，即使没副牌可打。
+5. NT（无主）牌：庄先打完长套再出的，你必须藏 A；庄开始就首出张小副的，你不可藏牌，尽全力帮庄跑分及树套。
+6. NT 牌：庄自己亮主抢到庄且开始就大量跑牌 → 你应该藏 A；相 → 应尽全力帮他跑牌。
+
+---
+
+## 三、野家（攻庄方）打法
+
+攻庄方的目标：尽快赢得 **80 分**甚至更多。
+
+1. **不管哪个副家，开局要争取上手。** 上手后当务之急是**调主对**，为攻副牌清路。
+2. 如果上手坐庄，你为下家：**先拆小对**，以便对家攻对时加分。
+3. 下家牌**只能调主**，不可出单张小副牌（因为是庄家收牌）。出副牌庄家有分就杀、没分就跑副牌，你和对家很被动。
+4. 如果下手坐庄，你作为上手牌：要**负责组织进攻**，哪怕是小对付牌。
+
+---
+
+## 四、八十分秘籍
+
+### 4.1 信号牌
+
+- 庄家出 A 时，对家也有 A → 出 **10 以上的牌**（或约定牌）示意。
+- 庄家三门副都有 → 告诉对家底没分，对家不要保底。
+- 庄家上来就调主 → 主很好或没副，对家**一定要出最大的主**。
+- 庄家某门副只出一张或只出一个小对 → 很可能这门的牌已经没了。
+
+### 4.2 关键牌处理
+
+- 一门副很多，有 AKK、66：**不要出 AKK，要出 KK**（出三张一定有人绝）。
+- 主很多可以洗干主，但副牌不好时，对家帮带牌还剩 2 张时要注意敌人还有大的。
+- 敌家还没得分就把主出剩 2 张 → 敌人可能为留对垫掉大牌。
+- 得了分就出让对家杀。
+- **底分多且主上没掉过对时**，牌剩 5 张或 3 张要注意，不要让敌人出手，最好留大小鬼到这时出。
+- **台下想扣底**：剩三张，你有大小鬼 + 一个小主，庄家也有大小鬼 → 出小鬼！庄家怕扣底会出大鬼，你就扣底了。
+- **打无主**：主多到最后还有 1-2 张副牌就不要出了，吊主把主洗干，留一个主再出，防止中敌人的对子。
+- **当庄家出副时**：看好对家是否已没了，如没了就让对家轻易接手，不要冲不一定大的对（如 KK）。
+- **当庄家主牌 <10 张且不硬**：要留分在手，就留一张，赌 A 在对家。
+
+### 4.3 控分口诀
+
+> 敌家得分 35 时要控制；过了 40 就放它到 75；过了 80 就放它到 115。**先保赢，出牌时不要逞能。**
+
+---
+
+## 五、升级实战经验
+
+### 5.1 庄家要点
+
+1. 庄家无法保底，连 5 分也不放——除非扣下这 5 分能使某门副牌绝掉。副牌差、分多又有小对时，扣底时把对拆掉以便对家有大对时能跑分。
+2. AKK 单出 A 看信号；AAK 单出 K，对家若有 K 打信号。
+3. 庄家打到中途突然用级牌吊主 → 要求对家不要再出副牌，对家应全力助其吊主。
+4. 庄家一门牌显示出极强牌力（如出完 AKK 后又甩了一对）→ 对家应"从大出到小"把该门大牌出掉，跟牌出中间张。
+5. 庄家某门副牌已绝 → 对家切莫乱捅小对，只剩小对也应拆开一张张出。同理，吊主时不应胡乱出对。
+6. 对家不可因自己牌好而喧宾夺主，打乱庄家牌路。
+7. 对家自己主牌少但有大鬼 → 尽早打出大鬼，让庄家心里有数。
+8. **用 Q 飞牌**：副牌持有 A、Q 及小牌，四家均有这门，出过一个 A 和一个 K。庄家出小牌时，如果对家不急于上手，出 Q 飞庄家的 K——若 K 真在庄家，多管一圈；若 K 在下家，下家的 K 永远抓不住，并无损失。
+9. 打到最后几张，庄家一方要特别小心。底里有分则最好不要在偶数张时让抓分方上手，否则被双扣损失大。
+10. 野家即使前半副牌一分不得也没有理由绝望——**75 还是 80，最后往往由小小的 5 分决定**。大牌要舍得出手，不要总幻想着扣底（野家有实力扣底则庄家牌不会好，底里往往不放分）。
+
+### 5.2 常见问题
+
+**① 牌权传递。** 庄家的对家上手出了几张大牌后只剩小对——一般不该冲小对，应通过调主或刺庄家没有的副牌把牌权还给庄家。庄家第二次得牌权后没牌出仍调主，对家再次上手后才能冲小对。
+
+**② 出 A 的顺序。** 一般人坐庄先出已断门的 A，再出还有副牌的 A。**建议反之**：先出还有副牌的 A，再出断门的 A，以便庄家逃分。
+
+**③ 藏单 A。** 庄家的对家不该藏单 A（确定无疑）。庄家没必要藏，除非打无将——打无将主少，庄家难以通过主牌再次上手，藏上一个 A 有时很有好处（尤其某门牌长套时）。
+
+**④ 甩牌。** 切不可在牌局早期或中期乱甩牌——对方最后出牌拥有主动权。万一甩牌被下家毙了，攻庄方趁机加分（甩几张加几十分），守庄方趁机逃牌。有连对时，守庄方先出旁门 A 再出连对；野家视情况分析。
+
+---
+
+## 六、无主（将）打法
+
+### 6.1 基本情况
+
+无主（NT）时只有大小王和级牌共 **12 张主**，主数量大大减少，不能随心所欲地杀。
+
+> **关键意识：** 对家出了 A → 你有 K 且这门的牌在 5 张以上时，**不要急于扔掉 K**。在另一个 A 出掉之后，你的 K 就是大副了。打无将一定要善于保护好自己的牌——大多数人缺乏对牌的保护意识，牌还没有做好就已经扔出去了。
+
+### 6.2 做牌
+
+- 数量多了就是优势。打无将时一门牌特别多（但没有 A）→ 不要埋底或垫副——等别人把大的出掉后，别人都没有了只有你有，**小副胜过几条 A**。
+- 要善于**以多胜少**，充分发挥量的优势。
+
+### 6.3 其他要点
+
+- **A 的下法：** 有 A 但没有 K、又不能很快绝了 → A 也不要急着放。放完 A 之后别人的 K 就是大的。要忍，用 A 最好杀掉一个 K——既有效控制分，又减少闲家副上的实力。有 A 不出也容易给闲家造成误解，认为你没有 A 放心出 K。
+- 善于与对家交换牌权，发挥到极点。
+- **穷寇莫追**——适当放一条路给闲家，反会收到斩尽杀绝的效果。
+- 分数不多时打 NT **不要轻易杀**——要记住 **35、75、115 才是分点**。在分数到了 65 的情况下让闲家大一次也肯定分不够，因为 15 分是两张牌。
+
+---
+
+## 七、记牌、读牌、算牌
+
+### 7.1 记牌
+
+打升级最基本的要求：**先看牌，再记牌**。看大牌和分牌（大王、小王、A、K、10、5）；在记牌基础上根据已出牌推理判断大牌和分牌在哪一家。
+
+#### 7.1.1 必记内容
+
+**(1) 分数。** 能算出走了多少分、还有多少分、底是否有分，对牌局有决定性意义。
+
+**(2) 基本主（大小王和级牌）。** 时刻记得走了多少张基本主，手上还有几张。记清基本主对胜负有时起决定性作用。
+
+**(3) 副牌 10 以上。** 10 以上必须强记（两副牌建议记到 8 以上）。大牌记清就能算清底是否有 K/10 之类的分，甩牌时知道哪张大。
+
+**(4) 自己强副那门的张数。** 对甩牌很有用。
+
+**(5) 主牌张数（高阶）。** 一般玩家不必考虑。
+
+#### 7.1.2 记牌训练路径
+
+1. 先记 10 以上的牌
+2. 再练只记分数（不在乎输赢）
+3. 合并记分和 10 以上
+4. 加上记基本主
+5. （可选）记主牌、副牌张数
+
+#### 7.1.3 两个阶段的记牌
+
+**发牌阶段：**
+- 叫主的人是在早/中/晚期叫的？→ 早期可能一时冲动（主好就当纸老虎），中晚期则主一定不错。
+- 反的人是立马反还是磨磨蹭蹭？→ 立马反说明原来那门极差；磨蹭反说明两门差得不多。
+- 被反的人原来叫什么花色？→ 作庄时尤为重要：对家叫红心后被边家反草花，说明对家红心一定很好。
+
+**行牌阶段：**
+- 每出一轮牌都根据牌面推理判断。
+- 逐渐从记 AK105 → 记 QJ、主牌 AQJ、主牌张数 → 记对家/边家准备甩的副牌张数。
+
+> **心态：** 循序渐进，一天打十把左右，多花时间**复盘**——回想三家所出的牌，多想为什么这样出、有没有更好的出法。比整天打牌效果要好得多。
+
+### 7.2 读牌
+
+去分析别人出的每张牌：他为什么要这样出？在什么情况下出了这张牌？说明他手里还有什么牌、没有什么牌？
+
+> 如果你能对每个人出的每张牌都这样分析，你能得到一种近乎于看牌软件的能力。
+
+**读牌实例：** 庄 25 张起手打副牌红 A，帮家垫 K —— 从第一张牌就映示：
+1. 帮家无红 A，无单 10（有对 10 的可能）
+2. 对家上手时如有 A 无 K，千万别出 A，应由另一方利用倒逼法反出红 K 或 Q
+3. 四个牌技相当的人坐在一起，**到最后一张牌时还能记住帮家第一张垫的红 K**——真正的好牌手。
+
+### 7.3 算牌
+
+- 主牌 36 张（NT 时 12 张），每门副牌 24 张。
+- 算牌和读牌联系在一起，在读牌的基础上算牌。
+
+---
+
+## 八、升级基本知识与打法体系
+
+### 8.1 基本概念
+
+升级本质：搭档交换上手，出牌，或消分，或抢分。控牌权和上手权在牌局进程中很重要，**压制边家上手**是关键。
+
+| 项目 | 数值 |
+|:----|:----|
+| 总牌数 | 108 张（两副） |
+| 每人手牌 | 25 张 |
+| 底牌 | 8 张 |
+| 主牌（打色级牌时）| 36 张，平均 9 张/人 |
+| 每色副牌 | 24 张，平均 6 张/人 |
+| 无将（NT）主牌 | 12 张（大小王 + 级牌） |
+
+**牌的分类：**
+- 主牌：常主 → 主 9JQ → 主 678 → 主 234 → 分牌主
+- 副牌：A → 分牌 K、10、5 → ≥8 的非分牌 → 7、6 → 4、3、2
+
+### 8.2 约定信号
+
+| 编号 | 信号 | 含义 |
+|:----:|:----|:----|
+| 1 | 庄出 A，对家出 8/9/J/Q | 有另一张同花色 A |
+| 2 | 庄出 A，对家慢 5 秒出分牌 | 有同花色 A |
+| 3 | 庄出 A，对家慢 5 出 6 或 7 | 有下一种花色 A 或大王 |
+| 4 | 庄起手调一张常主 | 主牌很强 |
+| 5 | 庄中局调常主 | 需立刻协助调主 |
+| 6 | 反慢 5 | 表示相反意思 |
+| 7 | 亮牌慢 5 | 庄已亮主→对家慢 5 后同意=有常主对；敌已亮主→对家慢 5 后反=反后牌也不好 |
+| 8 | 庄出 A，帮家慢 3 秒出最小牌 2 或 3 | 有大对 |
+| 9 | 调主用 9/J/Q（高花）| 进手在黑桃/红心 |
+| 9 | 调主用 2/3/4（低花）| 进手在低花 |
+| 9 | 调主用 6/7/8 | 不定进张 |
+| — | 帮家垫 J、Q | 副牌绝光信号 |
+| — | 闲家垫分牌 | 副牌绝光信号 |
+
+### 8.3 叫主亮牌
+
+#### 8.3.1 抢庄抢亮
+
+从 2 开打，第一次发牌一般见 2 就亮抢庄。如大小王已先期到达，更是见 2 就亮。
+
+**帮家反主原则：** 不为庄亮，必为庄反。
+
+- 帮家能反且主不错 → 迅速反。
+- 帮家能反无将但没强副 → 不反（无将不好打）。
+- 闲家能反：主不好可不反（庄是抢亮不见得主很好）；能反无将需根据副牌判断。
+
+#### 8.3.2 庄家原则
+
+自己能抢先亮成满意花色最为理想；如没有合适，宁肯人家亮或重新发牌。
+
+如看出帮家不反或为自己亮牌，即使自己主牌不好也可放心埋底，加点分，绝一门副都行。
+
+#### 8.3.3 打分值主时
+
+打 5、10、K 时，如能反无将且有一定副牌，应当反——捡分更容易。
+
+#### 8.3.4 发牌完毕后的观察
+
+- 庄家观察是否有玩家能反不反 → 判断反家是有色级主对还是大小王对。
+- 对家不反 → 过渡上有选择。
+- 闲家不反 → 该闲家主牌也不错，埋底和调主时注意。
+
+### 8.4 埋牌（非无主）
+
+**确定能否保底：**
+- 12 张以上主 + 大王 + 3 个以上色级牌 + 两个主对 → 保底无忧，大胆埋分绝副。
+- 主牌少但为强主（3 个以上王 + 4 个以上色级牌）→ 一般能控制到最后。
+
+#### 能保底时：
+1. **尽量绝光较短副牌的全部**（顶级大副如 A、AAK、AKK 保留，先手出完后绝门），方便将吃上手。如仅留一个小副对，考虑外面是否有对 K/对 10——如有分对可能且有主对能毙，把小对也埋底彻底绝光。
+2. **尽量全部保留较长副牌。** 9 张以上，理想分布下 5 圈后他人均绝。
+3. 主极强时，某门副如有对 10、对 K 等**都埋底**，仅留小张。
+4. 某副有两个以上对（其中之一非 AA）→ 保留一个单张，避免打出第一个对被吃后人家单捅拆了自己的对。
+
+#### 不能保底时：
+主牌 <10 张，仅有小王及 3 张以下副色级主 → **任何花色副牌的分都不埋**。短副牌可仅留下分值牌，以后不管大张在谁手，自己都能迅速绝光，再将吃上手。
+
+> **技巧：** 有多张副牌中没 A，要留一张非信号牌，以防给对家错误信号。埋 A：一门副有 A 但 4 张以下，另一门极长有甩牌可能 → 可以绝光短门副（包括 A）。
+
+### 8.5 埋牌（无主）
+
+- 共 12 张主：5 张以上 + 大小王 = 强主（可保底）；3 张以下 = 弱主。
+- 对牌程的控制在打无将中很重要——发挥强副优势。
+- 尽量全部保留长色副；视主牌强弱和牌程控制程度，确定短色副是全绝 / 埋分保留小张 / 仅留分。
+- 保底困难 → 分值牌一张不埋，或为绝某色副最多埋 5 分。
+
+### 8.6 开局：庄家策略
+
+庄家出牌顺序应设计好——根据牌形及主牌强度确定是先把最强副打掉，还是用强副后发制人。要有配合意识，尽快使帮家上手。
+
+1. **先出短张数的强副，再出长张数的强副。**
+2. **出某门副仅有的单 A**——帮家如有信号牌毫不犹豫出信号牌，获得上手权最重要。
+3. **出长副**——有 AKK（或 AAK）的若干张，先出单 A（或单 K）看帮家信号。
+4. **某色长副有 AA 及另一小对**，外面有 KK 存在的可能——如无拖拉机可能，AA 可不先出，守株待兔。
+5. **某色长副有 AK 等，长度 5 张以上还有对**——此门可不先出，待另一 A 下来后再 AK + 对连续攻打。
+6. **某色长副有 A 没 K，长度 5 张以上有小对**——先出 A 要信号，小对不先闯。
+7. **某色长副 9 张以上**（理想 5 圈后别人都绝）→ 在敌家不能将吃的情况下精确计算后连甩。有控制主牌时可在终局连甩保底。
+8. **某色长副没 A，有两个以上小对**（或有 KK 及另一小对）→ 对不先出。小调看对家能否上手拉副为上策。
+9. **某色长副有 KK**——先用偶数小牌或用 5 分吸引至少一个 A 出来。
+10. **对出牌顺序应有较好设计**（大局观），有时需后发制人。
+11. 副牌很好、不需要帮家上手或帮家上手不易过渡回来 → 庄家可以独闯天下。
+12. **主牌极强（18 张以上强主）**——副牌不能连续出净时，不要开局就用主对清主。应小调希望对家上手拉副。
+13. 帮家有反主未反的迹象 → 有大王可对调让对家上手；没王可适当分调。
+14. **没牌打，调主**——基本原则。
+
+### 8.7 开局：帮家策略
+
+帮家职责：尽快上手 → 打出全牌局最大强副 → 帮助庄家逃闲牌 → 尽可能过渡回庄家手上。
+
+**第一次调主：**
+- 帮家的大王**不为保底，更为上手**。
+- 有大王 + 强副或至少一个 A → 大王立即打出上手。
+- 有强副但没大王，强主不多 → 忍让，寄希望以后管住上家上手。
+- 有强主但没强副 → 出副色级主，压制上家不让下家得分；然后小调表明无强副可拉。
+
+**第一次上手后：**
+1. 先出短的强副（如单 A），再出长的强副（如拖拉机）。
+2. 不能确定庄家是否有的某副，有 A+对（对也是最大）的 3 张组合 → 不连出，先单 A。
+3. 先出庄家可能有的某花色强副，再出庄家可能没的 → 庄家更好把握垫牌。
+4. 不安全的小对（尤其是分对）不先出。出完最强副后单捅庄家绝门，让庄家将吃上手。
+5. 庄家没明显绝门 → 单捅庄家从没垫过的花色。**轻易不调主**，避免过早消耗庄家强主。
+6. 庄家出 A 自己没 A 但有小对、最小单张却是信号牌 → 应拆对垫小牌。
+7. 某色副自己极长有 AKK、10 等，庄家出 A → 可不给信号直接逃 10。
+8. 庄家出 AA，自己有 K 且 4 张以上 → K 不先垫，争取以后上手打 K 拉一圈。
+
+### 8.8 开局：闲家策略
+
+发完牌后根据手中牌设计行牌路线：能否用主或强副抠底？能否在副牌上捡到足够分？**尽可能最快上手，打出强副，捡分。**
+
+**庄家第一次调主时：**
+- **庄下家：** 有强副（拖拉机等）→ 如有大王应立即上手打强副。没大王可忍让。主弱或主短有 2 张以上分牌 → 出分牌希望对家吃住。一般情况小垫不理，有对家控制。
+- **庄上家：** 有强主必须压制帮家，**坚决不让帮家轻易上手拉副**。先出庄家可能有的副（自己的短副），再出庄家可能没的副。
+
+**闲家通则：**
+- 先出短强副，再出长强副（防敌家在你出长强副时把其他花色绝了）。
+- 某色长副有大对（尤其是分对）→ 有主对应对调一圈后再出。
+- 两人之间要有信号配合。
+- **上家对 A 的推理：** 某色副庄家没主动出 A，自己也没 A → 如庄家不藏 A，AA 不成对，对家和帮家一人一 A。
+
+---
+
+## 附记
+
+- **配合是最关键的**——看懂你对家扣牌及出牌的套路最重要。
+- 运气也很重要——好牌要打大光，差牌最多输 115。
+- 每个人都有自己的打牌思路，很难改。**看清它的思路，就知己知彼。**
+
+---
+
+> 整理说明：原文为棋牌网站 2010 年发布的九篇连载，含大量广告文字、重复内容（连载五与连载八高度重复已合并）、冗长引言结尾等。本版去除所有无关信息，重整章节结构，保留全部打法精华。
+</script>
+
+<!-- ============================================================
+     SCRIPTS: marked.js loaded async with fallback
+     ============================================================ -->
 <script>
+'use strict';
+
+// ================================================================
+// 0. LOAD MARKED.JS (multi-CDN, async with fallback)
+// ================================================================
+let markedReady = false;
+let markedLib = null;
+
+(function loadMarked() {
+  const urls = [
+    'https://cdn.bootcdn.net/ajax/libs/marked/12.0.0/marked.min.js',
+    'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
+    'https://unpkg.com/marked/marked.min.js'
+  ];
+  let idx = 0;
+
+  function tryNext() {
+    if (idx >= urls.length) {
+      // All CDNs failed — will use built-in fallback
+      console.warn('[升级训练器] 所有 marked.js CDN 加载失败，使用内建 Markdown 解析器。');
+      markedReady = false;
+      bootstrap();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = urls[idx];
+    script.onload = function() {
+      markedLib = window.marked;
+      markedReady = true;
+      console.log('[升级训练器] marked.js 加载成功: ' + urls[idx]);
+      bootstrap();
+    };
+    script.onerror = function() {
+      idx++;
+      tryNext();
+    };
+    document.head.appendChild(script);
+  }
+
+  tryNext();
+})();
+
+// ================================================================
+// 0b. BUILT-IN SIMPLE MARKDOWN → HTML PARSER (fallback)
+//     Handles: h1-h4, p, **bold**, *italic*, `code`, ```code```,
+//              - lists, 1. ordered lists, | tables |, > blockquote, --- hr
+// ================================================================
+function simpleMarkdownToHTML(md) {
+  let html = '';
+  const lines = md.split('\n');
+  let i = 0;
+  let inCodeBlock = false;
+  let codeBlock = '';
+  let inTable = false;
+  let tableRows = [];
+  let tableAligns = [];
+
+  function escapeHTML(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function processInline(text) {
+    // Code spans (must be first)
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Bold
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    return text;
+  }
+
+  function flushTable() {
+    if (tableRows.length === 0) return '';
+    let tbl = '<table>';
+    // Header row
+    if (tableRows.length >= 1) {
+      tbl += '<thead><tr>';
+      const cells = tableRows[0];
+      cells.forEach(c => {
+        tbl += '<th>' + processInline(c.trim()) + '</th>';
+      });
+      tbl += '</tr></thead>';
+    }
+    // Body
+    if (tableRows.length > 1) {
+      tbl += '<tbody>';
+      for (let r = 1; r < tableRows.length; r++) {
+        tbl += '<tr>';
+        tableRows[r].forEach(c => {
+          tbl += '<td>' + processInline(c.trim()) + '</td>';
+        });
+        tbl += '</tr>';
+      }
+      tbl += '</tbody>';
+    }
+    tbl += '</table>';
+    tableRows = [];
+    tableAligns = [];
+    inTable = false;
+    return tbl;
+  }
+
+  function flushParagraph(buf) {
+    if (!buf.trim()) return '';
+    return '<p>' + processInline(buf.trim()) + '</p>';
+  }
+
+  let paraBuf = '';
+  let inList = false;
+  let listType = '';
+
+  function flushList() {
+    if (!inList) return '';
+    inList = false;
+    return '</' + listType + '>';
+  }
+
+  function flushParaBuf() {
+    if (!paraBuf.trim()) return '';
+    html += '<p>' + processInline(paraBuf.trim()) + '</p>';
+    paraBuf = '';
+  }
+
+  while (i < lines.length) {
+    let line = lines[i];
+
+    // Code block fence
+    if (/^\s*```/.test(line)) {
+      if (inCodeBlock) {
+        html += '<pre><code>' + escapeHTML(codeBlock).replace(/\n$/, '') + '</code></pre>';
+        codeBlock = '';
+        inCodeBlock = false;
+      } else {
+        flushParaBuf();
+        flushList();
+        if (inTable) html += flushTable();
+        inCodeBlock = true;
+        codeBlock = '';
+      }
+      i++; continue;
+    }
+
+    if (inCodeBlock) {
+      codeBlock += line + '\n';
+      i++; continue;
+    }
+
+    // Table
+    if (/^\|.*\|/.test(line) && line.trim().indexOf('|') === 0) {
+      flushParaBuf();
+      flushList();
+      const cells = line.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+      // Check if it's an alignment row
+      if (/^[\s\-:|\s]+$/.test(line) && line.includes('-')) {
+        tableAligns = cells.map(c => {
+          c = c.trim();
+          if (c.startsWith(':') && c.endsWith(':')) return 'center';
+          if (c.endsWith(':')) return 'right';
+          return 'left';
+        });
+        i++; continue;
+      }
+      if (!inTable) { inTable = true; tableRows = []; }
+      tableRows.push(cells);
+      i++; continue;
+    } else if (inTable) {
+      html += flushTable();
+    }
+
+    // Blank line — flush everything
+    if (line.trim() === '') {
+      flushParaBuf();
+      if (inList) html += flushList();
+      if (inTable) html += flushTable();
+      paraBuf = '';
+      i++; continue;
+    }
+
+    // Heading
+    const hMatch = line.match(/^(#{1,4})\s+(.+)/);
+    if (hMatch) {
+      flushParaBuf();
+      flushList();
+      if (inTable) html += flushTable();
+      const level = hMatch[1].length;
+      const text = processInline(hMatch[2].trim());
+      const slug = hMatch[2].trim().replace(/<[^>]*>/g,'').toLowerCase().replace(/[^\w一-鿿]+/g,'-').replace(/^-+|-+$/g,'').replace(/-+/g,'-');
+      html += '<h' + level + ' id="' + slug + '">' + text + '</h' + level + '>';
+      i++; continue;
+    }
+
+    // Horizontal rule
+    if (/^\s*---+\s*$/.test(line)) {
+      flushParaBuf();
+      flushList();
+      if (inTable) html += flushTable();
+      html += '<hr>';
+      i++; continue;
+    }
+
+    // Blockquote
+    if (/^>\s?(.*)/.test(line)) {
+      flushParaBuf();
+      flushList();
+      if (inTable) html += flushTable();
+      let bqContent = '';
+      while (i < lines.length && /^>\s?(.*)/.test(lines[i])) {
+        bqContent += lines[i].replace(/^>\s?/, '') + '\n';
+        i++;
+      }
+      html += '<blockquote><p>' + processInline(bqContent.trim().replace(/\n/g, '<br>')) + '</p></blockquote>';
+      continue;
+    }
+
+    // Unordered list
+    const ulMatch = line.match(/^(\s*)[-*+]\s+(.+)/);
+    if (ulMatch) {
+      flushParaBuf();
+      if (inTable) html += flushTable();
+      if (!inList || listType !== 'ul') {
+        if (inList) html += flushList();
+        html += '<ul>';
+        inList = true; listType = 'ul';
+      }
+      html += '<li>' + processInline(ulMatch[2].trim()) + '</li>';
+      i++; continue;
+    }
+
+    // Ordered list
+    const olMatch = line.match(/^(\s*)\d+\.\s+(.+)/);
+    if (olMatch) {
+      flushParaBuf();
+      if (inTable) html += flushTable();
+      if (!inList || listType !== 'ol') {
+        if (inList) html += flushList();
+        html += '<ol>';
+        inList = true; listType = 'ol';
+      }
+      html += '<li>' + processInline(olMatch[2].trim()) + '</li>';
+      i++; continue;
+    } else if (inList) {
+      html += flushList();
+    }
+
+    // Regular paragraph text
+    if (paraBuf) paraBuf += '\n';
+    paraBuf += line;
+    i++;
+  }
+
+  // Flush remaining
+  flushParaBuf();
+  if (inList) html += flushList();
+  if (inTable) html += flushTable();
+
+  return html;
+}
+
+// ================================================================
+// 1. READ MARKDOWN CONTENT
+// ================================================================
+let mdBasicRaw, mdAdvRaw;
+try {
+  mdBasicRaw = document.getElementById('md-basic-rules').textContent;
+  mdAdvRaw   = document.getElementById('md-advanced-rules').textContent;
+} catch(e) {
+  console.error('[升级训练器] 读取 Markdown 内容失败:', e);
+}
+
+// ================================================================
+// 2. TOC EXTRACTION — parse headings from rendered HTML
+// ================================================================
+function extractTOC(htmlString) {
+  const toc = [];
+  const regex = /<h([1-4])\s+id="([^"]*)"[^>]*>(.*?)<\/h\1>/gi;
+  let match;
+  while ((match = regex.exec(htmlString)) !== null) {
+    const level = parseInt(match[1]);
+    const slug = match[2];
+    const text = match[3].replace(/<[^>]*>/g, '');
+    toc.push({ level, text, slug });
+  }
+  return toc;
+}
+
+// ================================================================
+// 3. RENDER MARKDOWN + BUILD TOC (robust, with fallback)
+// ================================================================
+function renderMarkdown(rawMd, contentEl, tocListEl, tocContainerEl) {
+  if (!rawMd) {
+    contentEl.innerHTML = '<p style="color:var(--red);">错误：Markdown 内容为空。</p>';
+    return;
+  }
+
+  let html = '';
+  let toc = [];
+
+  try {
+    if (markedReady && markedLib && typeof markedLib.parse === 'function') {
+      // Use marked.js
+      toc = [];
+      const renderer = new markedLib.Renderer();
+      renderer.heading = function(text, level) {
+        const cleanText = text.replace(/<[^>]*>/g, '');
+        const slug = cleanText
+          .toLowerCase()
+          .replace(/[^\w一-鿿]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .replace(/-+/g, '-');
+        toc.push({ level, text: cleanText, slug });
+        return '<h' + level + ' id="' + slug + '">' + text + '</h' + level + '>';
+      };
+      markedLib.setOptions({ breaks: false, gfm: true });
+      html = markedLib.parse(rawMd, { renderer });
+    } else {
+      // Use built-in simple parser
+      html = simpleMarkdownToHTML(rawMd);
+      toc = extractTOC(html);
+    }
+  } catch(e) {
+    console.error('[升级训练器] Markdown 渲染出错，使用内建解析器:', e);
+    html = simpleMarkdownToHTML(rawMd);
+    toc = extractTOC(html);
+  }
+
+  // Insert HTML
+  contentEl.innerHTML = html;
+
+  // Build TOC
+  if (toc.length === 0) {
+    tocListEl.innerHTML = '<li style="font-size:12px;color:var(--text-dim);padding:4px;">（无标题）</li>';
+  } else {
+    tocListEl.innerHTML = toc.map(function(item) {
+      var cls = 'toc-item l' + item.level;
+      return '<li><a class="' + cls + '" href="#' + item.slug + '" data-slug="' + item.slug + '" onclick="scrollToHeading(event, \'' + item.slug + '\')">' + item.text + '</a></li>';
+    }).join('');
+  }
+
+  tocContainerEl._toc = toc;
+}
+
+// ================================================================
+// 4. SMOOTH SCROLL TO HEADING (handles sticky nav offset)
+// ================================================================
+function scrollToHeading(e, slug) {
+  e.preventDefault();
+  const el = document.getElementById(slug);
+  if (el) {
+    const navH = document.querySelector('.top-nav').offsetHeight;
+    const top = el.getBoundingClientRect().top + window.scrollY - navH - 16;
+    window.scrollTo({ top, behavior: 'smooth' });
+  }
+}
+
+// ================================================================
+// 5. TOC TOGGLE FOR MOBILE
+// ================================================================
+function toggleTOC(tocId) {
+  const sidebar = document.getElementById(tocId);
+  const toggle = document.getElementById(tocId + 'Toggle');
+  if (sidebar.classList.contains('open')) {
+    sidebar.classList.remove('open');
+    if (toggle) toggle.innerHTML = '<i class="fa-solid fa-bars"></i> 显示目录';
+  } else {
+    sidebar.classList.add('open');
+    if (toggle) toggle.innerHTML = '<i class="fa-solid fa-xmark"></i> 隐藏目录';
+  }
+}
+
+// ================================================================
+// 6. TAB SWITCHING
+// ================================================================
+let currentPanel = 'panel-basic';
+
+function switchPanel(panelId) {
+  // Handle game mode transitions
+  if (currentPanel === 'panel-game' && panelId !== 'panel-game') {
+    document.body.classList.remove('in-game');
+  }
+  if (panelId === 'panel-game') {
+    document.body.classList.add('in-game');
+  }
+
+  // Hide all panels
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  // Deactivate all tabs & launcher buttons
+  document.querySelectorAll('.nav-tab,.game-launch-btn').forEach(t => t.classList.remove('active'));
+
+  // Show target
+  const panel = document.getElementById(panelId);
+  if (panel) panel.classList.add('active');
+
+  // Activate tab
+  const tab = document.querySelector(`[data-panel="${panelId}"]`);
+  if (tab) tab.classList.add('active');
+
+  currentPanel = panelId;
+
+  // Scroll to top of content
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  // Render markdown lazily on first visit
+  if (panelId === 'panel-basic' && !panel._rendered) {
+    renderMarkdown(mdBasicRaw,
+      document.getElementById('mdBasicContent'),
+      document.getElementById('tocBasicList'),
+      document.getElementById('tocBasic'));
+    panel._rendered = true;
+  }
+  if (panelId === 'panel-advanced' && !panel._rendered) {
+    renderMarkdown(mdAdvRaw,
+      document.getElementById('mdAdvancedContent'),
+      document.getElementById('tocAdvancedList'),
+      document.getElementById('tocAdvanced'));
+    panel._rendered = true;
+  }
+
+  // Lazy init game on first visit to game panel
+  if (panelId === 'panel-game' && typeof initGame === 'function') {
+    setTimeout(() => initGame(), 100);
+  }
+}
+
+// ================================================================
+// 7. POKER CARD UTILITIES
+// ================================================================
+const SUIT_INFO = {
+  s: { symbol: '♠', color: 'black', name: '黑桃' },
+  h: { symbol: '♥', color: 'red',   name: '红心' },
+  d: { symbol: '♦', color: 'red',   name: '方块' },
+  c: { symbol: '♣', color: 'black', name: '梅花' }
+};
+const RANK_LABEL = {
+  'A':'A','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7',
+  '8':'8','9':'9','10':'10','J':'J','Q':'Q','K':'K'
+};
+
+function parseCard(str) {
+  if (str === 'BJ') return { type:'joker', rank:'大', suit:null, color:'red', label:'大王' };
+  if (str === 'SJ') return { type:'joker', rank:'小', suit:null, color:'black', label:'小王' };
+  const m = str.match(/^(10|[2-9AKQJ])([shdc])$/i);
+  if (!m) return null;
+  const rank = m[1].toUpperCase();
+  const suit = m[2].toLowerCase();
+  const info = SUIT_INFO[suit];
+  return { type:'normal', rank, suit, color:info.color, symbol:info.symbol, label: RANK_LABEL[rank] + info.symbol };
+}
+
+function renderCards(cardArray, container) {
+  container.innerHTML = '';
+  if (!cardArray || cardArray.length === 0) {
+    container.innerHTML = '<span style="font-size:12px;color:var(--text-dim);padding:6px;">暂无牌面</span>';
+    return;
+  }
+  cardArray.forEach(cs => {
+    const c = parseCard(cs);
+    if (!c) return;
+    const div = document.createElement('div');
+    div.className = 'poker-card';
+    if (c.type === 'joker') {
+      div.classList.add(c.color === 'red' ? 'joker-red' : 'joker-black');
+      const r = document.createElement('div');
+      r.className = 'rank-center'; r.textContent = c.label;
+      div.appendChild(r);
+    } else {
+      div.classList.add(c.color);
+      const cr = document.createElement('div');
+      cr.className = 'rank-corner'; cr.textContent = RANK_LABEL[c.rank]; div.appendChild(cr);
+      const cs2 = document.createElement('div');
+      cs2.className = 'suit-corner'; cs2.textContent = c.symbol; div.appendChild(cs2);
+      const rc = document.createElement('div');
+      rc.className = 'rank-center'; rc.textContent = RANK_LABEL[c.rank]; div.appendChild(rc);
+      const sc = document.createElement('div');
+      sc.className = 'suit-center'; sc.textContent = c.symbol; div.appendChild(sc);
+    }
+    container.appendChild(div);
+  });
+}
+
+// ================================================================
+// 8. SCENARIO DATA (8 scenarios extracted from advanced rules)
+// ================================================================
+const SCENARIOS = [
+  {
+    id: 1, title: '庄家清主打法判断', category: '庄家打法',
+    description: '你坐庄，当前打<strong>2级</strong>，主花色<strong>♠黑桃</strong>。刚上手获得出牌权。手牌14张主，包括小王对、主2对、77对、33对。副牌红心A、方块A、草花AAKJJ9766。你有充足的主牌实力——该如何开局？',
+    level: '2', trump: '♠', role: '庄家',
+    hand: ['BJ','SJ','SJ','2s','2s','2h','2d','2c','7s','7s','3s','3s','Qs','8s','Ah','Ad','Ac','Ac','Kc','Jc','Jc','9c','7c','6c','6c'],
+    played: [],
+    options: [
+      { text:'上手就打主对，连续清主', correct:true,
+        feedback:'<strong>✅ 推荐打法！阳刚清主</strong><br><br>四个主对连续清出后，外面基本没主。这是孙子兵法中的<em>"先发制人"</em>。核心要点：① 起了两手主对后<strong>切勿打单张</strong>，否则给别人上手机会；② 清光主后再处理副牌，让对手无法毙你的副牌大牌；③ <em>攻心为上</em>——先不打副牌，对手不知道你断什么门。' },
+      { text:'先出红心A探路，看对家信号', correct:false,
+        feedback:'<strong>⚠️ 不够理想</strong><br><br>先出副牌A会暴露你的断门信息。敌家知道你的牌路后，在你清主时可以有针对性地保留长套。<em>"上善伐兵，攻心为上"</em>——应先清主，让对手摸不透你的副牌分布。' },
+      { text:'先单吊几轮主，试探对手反应', correct:false,
+        feedback:'<strong>⚠️ 浪费优势</strong><br><br>你有四对主牌的绝对优势，单吊主牌等于给了对手喘息之机。清主打法讲究<strong>连贯施压</strong>——连续出对让对手被迫不断拆牌，不给其组织副牌进攻的机会。' }
+    ],
+    source: '进阶规则 §1.1 清主打法, §1.6 大光条件'
+  },
+  {
+    id: 2, title: 'AKK牌型处理', category: '庄家打法',
+    description: '你坐庄，打<strong>5级</strong>，主花色<strong>♥红心</strong>。你手中草花副牌持有 <strong>AKK + 一个小对子(44)</strong>。轮到你出牌，草花还没人动过。如何最优地打出这副牌？',
+    level: '5', trump: '♥', role: '庄家',
+    hand: ['SJ','SJ','5h','5h','5d','5c','Kh','Qh','9h','8h','8h','4h','As','Ks','10s','7s','Ac','Kc','Kc','Qc','4c','4c','Ad','Jd','6d'],
+    played: [],
+    options: [
+      { text:'先出K一对，确定外面无对子后再出A+44', correct:true,
+        feedback:'<strong>✅ 推荐打法！先K对探路</strong><br><br>进阶规则明确推荐的AKK处理方式：① 先打K一对→确定外面没有对子后→出A+小对子；② <strong>核心逻辑：</strong>打三张闲家断的可能性比打两张断大很多，避免第二个对子被杀的厄运；③ 如果别人手上还有对子，自己手上的A又能大一手，多了一手出牌机会。' },
+      { text:'先出AKK', correct:false,
+        feedback:'<strong>⚠️ 顺序有误</strong><br><br>进阶规则明确指出：一门副很多，有AKK、66时——<strong>不要出AKK，要出KK</strong>。原因是出三张一定有人绝，一旦被毙，这手强牌就浪费了。先出K一对可以<strong>探明敌情</strong>——如果K对没人管，说明外面没有AA，剩下的A+小对子就安全可出了。如果先出AKK，一旦被毙，损失的是三张好牌。' },
+      { text:'先冲44小对子，消耗敌家大对', correct:false,
+        feedback:'<strong>❌ 不推荐</strong><br><br>先冲小对子不仅暴露了你的对子结构，而且44太小，很容易被别人更大的对子吃掉并得分。你有AKK这样的强牌，应该<strong>掌握出牌主动权</strong>，而不是被动地用小对子送出手权。' }
+    ],
+    source: '进阶规则 §1.3 大对子的打法'
+  },
+  {
+    id: 3, title: '投石问路 — 后发制人', category: '庄家打法',
+    description: '你坐庄，打<strong>8级</strong>，主花色<strong>♦方块</strong>。你手上有红心副牌 <strong>K一对 + 一个小对子(66)</strong>。你怀疑外面可能有红心A一对。现在轮到你出牌——你要主动冲K对吗？',
+    level: '8', trump: '♦', role: '庄家',
+    hand: ['BJ','BJ','SJ','8d','8d','8h','8c','Ad','Kd','Qd','Jd','7d','5d','Kh','Kh','Qh','6h','6h','3h','As','10s','9s','Ac','Qc','9c'],
+    played: [],
+    options: [
+      { text:'不先动，等别人先出红心再收渔翁之利', correct:true,
+        feedback:'<strong>✅ 推荐打法！后发制人（阴柔打法）</strong><br><br>用孙子兵法来说是<em>"后发制人"</em>：① 如果自己上手冲K一对，很容易被对方A对抓；② 选择让步，等别人先出红心——别人出A后你的K就是最大的；③ <strong>核心智慧：</strong>不出A，别人主观认为A不在你手里，会自己冲分到你手上；④ 一门副牌中有10以上的对子：先不出，免得暴露，以不动制主动。' },
+      { text:'上手就冲K一对，赌A对不在外面', correct:false,
+        feedback:'<strong>⚠️ 冒险行为</strong><br><br>冲K一对的风险在于：如果外面真有A一对（概率不低——两副牌共有4张红心A），你的K一对就会被吃掉，损失20分！<br><br>升级的核心原则：<strong>"要凶凶到底，要稳稳到头"</strong>。当你不确定时，后发制人更稳妥。' },
+      { text:'先出一张Q，试探A的分布', correct:false,
+        feedback:'<strong>🔶 有一定道理，但有更好选择</strong><br><br>出一张Q确实可以破了A一对（这是规则中提到的方法一），但这也暴露了你红心有一定的实力。相比之下，<strong>完全不动、等别人先出</strong>能获得更多信息，且不暴露自己的牌力。不过如果局面紧迫需要抢分，出Q破A对也是可行的战术。' }
+    ],
+    source: '进阶规则 §1.2 投石问路'
+  },
+  {
+    id: 4, title: '帮庄方大王上手决策', category: '帮庄方打法',
+    description: '你是<strong>帮庄方（庄家对家）</strong>，打<strong>3级</strong>，主花色<strong>♣梅花</strong>。庄家首攻调了一张小主牌。你手上有<strong>大王 + 红桃AKK拖拉机</strong>，以及不错的副牌实力。轮到你——要不要用大王抢上手？',
+    level: '3', trump: '♣', role: '帮庄方',
+    hand: ['BJ','3c','3c','3h','3d','Kc','Jc','Jc','7c','4c','Ah','Kh','Kh','Qh','10h','8h','7h','As','Ks','10s','10s','Ad','Kd','6d','Jd'],
+    played: [],
+    options: [
+      { text:'用大王立即上手，打出红桃AKK拖拉机', correct:true,
+        feedback:'<strong>✅ 推荐打法！</strong><br><br>帮庄十六原则之关键：① <strong>帮庄方的大王不为保底，更为上手！</strong>② 有大王+强副→大王立即打出上手，然后打出全牌局最大强副；③ 上手后出红桃AKK拖拉机，帮庄家跑闲牌，再单捅庄家绝门过渡回去；④ 帮庄方职责：尽快上手→打出强副→帮助庄家逃牌→过渡回庄家。' },
+      { text:'忍让，寄希望以后管住上家再上手', correct:false,
+        feedback:'<strong>⚠️ 过于保守</strong><br><br>帮庄方有强副时不应忍让。忍让的风险：如果闲家用小王或级牌上手，打出他们的强副，庄家一方会陷入被动。你有红桃拖拉机这把"重武器"，应该尽快打出来帮庄家跑掉闲牌。帮庄十六原则第2条：<em>"开牌后不惜一切代价争取上手"</em>。' },
+      { text:'出副色级牌压制，然后小调表明无强副', correct:false,
+        feedback:'<strong>⚠️ 信号混乱</strong><br><br>这个选项适用于有强主但没强副的情况。但你有红桃拖拉机这样的强副，应该直接打出而非暗示无强副。帮庄方的出牌信号必须准确——误导庄家会导致整个配合崩溃。' }
+    ],
+    source: '进阶规则 §2.2 帮庄十六原则, §8.7 帮家策略'
+  },
+  {
+    id: 5, title: '无主（NT）A的处理', category: '无主打法',
+    description: '本局<strong>无主（NT）</strong>，只有大小王和级牌共12张主。你坐庄打<strong>10级</strong>。手中方块副牌有 <strong>A 但没有 K</strong>，方块共5张。你该如何处理这个A？',
+    level: '10', trump: 'NT', role: '庄家',
+    hand: ['BJ','SJ','10s','10c','10c','Ad','Qd','Jd','7d','4d','Ks','Qs','9s','6s','5s','5s','3s','Ah','9h','9h','8h','3h','Kc','4c','2c'],
+    played: [],
+    options: [
+      { text:'保留A不出，等别人的K出现后再用A杀', correct:true,
+        feedback:'<strong>✅ 推荐打法！保护牌力</strong><br><br>无主时关键意识：① 放完A之后别人的K就是大的——所以<strong>不要急着放A</strong>；② 要忍，用A最好杀掉一个K→既有效控制分，又减少闲家副上的实力；③ 有A不出也容易给闲家造成误解，认为你没有A而放心出K；④ <strong>核心：</strong>打无将一定要善于保护好自己的牌——大多数人缺乏保护意识，牌还没有做好就扔出去了。' },
+      { text:'立即出A，确立方块控制权', correct:false,
+        feedback:'<strong>⚠️ 典型的无主误区</strong><br><br>在无主情况下，主牌只有12张，你无法像有主时那样随心所欲地杀牌。出完A后，外面持有K的玩家就有了大牌权。无主的核心智慧是<em>"以多胜少"</em>——保留A，等别人出K时你再吃，既控制了分数，又保持了进手权。' },
+      { text:'把A下底，减少方块数量专注其他花色', correct:false,
+        feedback:'<strong>❌ 不推荐</strong><br><br>A是重要的进手牌和控制牌。在无主时，进手机会更加宝贵——把A埋底等于放弃了一次确定的进手权。进阶规则明确指出：<em>"A留在手里不打，作用和下底差不多：削弱敌家甩牌威力、浪费敌家进手。有A在手多一个大概率的进手，多出很多出牌选择余地——这是A下底所不具备的。"</em>' }
+    ],
+    source: '进阶规则 §6 无主打法, §1.4 A的作用'
+  },
+  {
+    id: 6, title: '庄家扣底策略抉择', category: '庄家打法',
+    description: '你坐庄打<strong>7级</strong>，主花色<strong>♥红心</strong>。你已拿起8张底牌，现在手中共<strong>33张牌</strong>，需要选8张扣回底牌。主牌12张（1小王+主花色级牌7♥对+3张副色级牌+6张红心散牌），<strong>主牌不强</strong>——无大王、无主牌对子（除级牌对）。三门副牌都还不错。你的扣底策略是？',
+    level: '7', trump: '♥', role: '庄家（扣底阶段）',
+    hand: ['SJ','7h','7h','7s','7d','7c','Ah','Kh','Jh','9h','6h','4h','As','Ks','Qs','Js','10s','9s','8s','4s','Ad','Kd','Qd','Jd','10d','8d','3d','Ac','Kc','Qc','Jc','10c','5c'],
+    played: [],
+    options: [
+      { text:'绝掉一门副牌（如方块），底牌最多放5分', correct:true,
+        feedback:'<strong>✅ 推荐策略！</strong><br><br>扣底底线原则（主<13张，2对）：① <strong>把没分的副绝掉</strong>，底最多放5分；② 切忌留没分的小对——副扣不完就留两张或一张（哪怕是分），别人出副时垫掉；③ <strong>金句：</strong><em>"底牌铺完，这局牌的胜负也就决定了"</em>；④ 绝一门副牌可以创造和对家过桥的通道。' },
+      { text:'保底为主，把所有分都留在手里不打底', correct:false,
+        feedback:'<strong>⚠️ 过度保守</strong><br><br>虽然你主牌不强需要谨慎，但完全不埋分会让你在出牌时处处受限。适当绝一门副牌可以<strong>创造和对家过桥的通道</strong>——当对家出这门时你可以将吃上手。不留任何通道，你只能被动跟牌，很难掌控牌局节奏。' },
+      { text:'把分值牌(5/10/K)都埋底，轻装上阵', correct:false,
+        feedback:'<strong>❌ 非常危险！</strong><br><br>你主牌只有10张且不强（仅小王+副色级主），不能保底的情况下埋分是致命的。一旦闲家抠底，底牌分数被翻倍计算，可能直接导致大败。规则明确：<strong>不能保底时，任何花色副牌的分都不埋。</strong>' }
+    ],
+    source: '进阶规则 §1.7 如何扣底牌, §8.4 埋牌策略'
+  },
+  {
+    id: 7, title: '野家（攻庄方）上手策略', category: '攻庄方打法',
+    description: '你是<strong>野家（攻庄方）</strong>，坐<strong>庄家下家</strong>。打<strong>4级</strong>，主花色<strong>♠黑桃</strong>。庄家首攻调了一张小主牌。你手上有不错的副牌实力和主牌对子。作为攻庄方，你的首要任务是什么？',
+    level: '4', trump: '♠', role: '攻庄方（庄下家）',
+    hand: ['SJ','4s','4s','4h','4c','Ks','Qs','8s','5s','Ah','Kh','Qh','Jh','10h','9h','7h','Ad','Kd','Kd','10d','5d','Ac','Qc','Jc','3c'],
+    played: [],
+    options: [
+      { text:'出主牌分（5s）让对家上手，然后调主对清路', correct:true,
+        feedback:'<strong>✅ 推荐打法！</strong><br><br>攻庄方通则：① <strong>不管哪个副家，开局要争取上手。上手后当务之急是调主对，为攻副牌清路</strong>；② 作为庄下家：只能调主，不可出单张小副牌（因为庄家收牌）；③ 有分牌可以出分让对家吃住→然后对家打强副或调主对；④ 攻庄方目标明确：尽快赢得80分甚至更多——积极进攻！' },
+      { text:'忍住不出，垫一张小牌观察局势', correct:false,
+        feedback:'<strong>⚠️ 过于消极</strong><br><br>作为攻庄方，消极等待是赢不了80分的。庄家一方控制着出牌节奏，你必须<strong>主动创造上手机会</strong>。你手上有红心长套（7张含AKQJ），一旦清掉主牌对子，这副红心就能捡到可观的分数。' },
+      { text:'4，让庄家杀或跑', correct:false,
+        feedback:'<strong>❌ 严重错误！</strong><br><br>作为庄家下家出单张小副牌是大忌——因为庄家在你下家收牌。庄家有分就杀、没分就跑副牌，你和你的对家会非常被动。进阶规则明确指出：<em>"下家牌只能调主，不可出单张小副牌（因为是庄家收牌）。出副牌庄家有分就杀、没分就跑副牌，你和对家很被动。"</em>' }
+    ],
+    source: '进阶规则 §3 野家打法, §8.8 闲家策略'
+  },
+  {
+    id: 8, title: '庄家首攻 — 信号与配合', category: '庄家打法',
+    description: '你坐庄打<strong>6级</strong>，主花色<strong>♣梅花</strong>。手牌副牌结构清晰：红心持<strong>AKK+对子</strong>，方块持<strong>AAK</strong>，黑桃只有<strong>单A</strong>。你首次获得出牌权——应该先出哪一门？',
+    level: '6', trump: '♣', role: '庄家',
+    hand: ['BJ','SJ','SJ','6c','6c','6h','6d','Ac','Kc','Qc','8c','5c','3c','Ah','Kh','Kh','Qh','9h','9h','Jh','Ad','Ad','Kd','7d','As'],
+    played: [],
+    options: [
+      { text:'先出黑桃单A——短张强副先出，看对家信号', correct:true,
+        feedback:'<strong>✅ 推荐打法！</strong><br><br>庄家出牌顺序设计原则：① <strong>先出短张数的强副，再出长张数的强副</strong>；② 出某门副仅有的单A→帮家如有信号牌（8/9/J/Q）毫不犹豫打出→获得上手权最重要；③ 红心AKK→单出A看对家信号；方块AAK→单出K（对家若有K打信号）；④ 大局观：先出短的A让对家表态，再根据信号决定长副怎么打。' },
+      { text:'先出红心AKK拖拉机——把强副打完再说', correct:false,
+        feedback:'<strong>⚠️ 顺序不当</strong><br><br>红心AKK虽然很强，但先出长的强副有两个问题：① 对家不知道你的其他副牌情况，无法给你有效信号；② 先出长副会让敌家更早判断出你的牌型并做应对。规则建议：<em>"先出短张数的强副，再出长张数的强副"</em>。' },
+      { text:'先调一张主，试探各方反应', correct:false,
+        feedback:'<strong>⚠️ 浪费先手</strong><br><br>你有清晰的副牌结构，不需要用调主来试探。庄家首攻调主通常意味着主牌极强（16+）或副牌很差——这会给对家错误的信号。你手上有黑桃单A和红心AKK方块AAK这样的好副牌，应该<strong>利用首攻权主动出击</strong>，让对家尽快上手。' }
+    ],
+    source: '进阶规则 §8.6 庄家开局策略, §4.1 信号牌'
+  }
+];
+
+// ================================================================
+// 9. SIMULATOR STATE & RENDERING
+// ================================================================
+let simIdx = 0;
+let simAnswered = false;
+
+function renderScenarioList() {
+  const list = document.getElementById('scenarioList');
+  list.innerHTML = SCENARIOS.map((s, i) => {
+    const catIcon = s.category === '庄家打法' ? '🏠' : s.category === '帮庄方打法' ? '🤝' : s.category === '攻庄方打法' ? '⚔️' : '🎯';
+    return `<div class="scenario-item${i === simIdx ? ' active' : ''}" onclick="loadSimScenario(${i})">
+      <div class="sc-name">${s.title}</div>
+      <div class="sc-cat"><i class="fa-solid fa-tag"></i> ${catIcon} ${s.category} · ${s.source.split(',')[0]}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('scenarioCounter').textContent = `${simIdx + 1} / ${SCENARIOS.length}`;
+}
+
+function loadSimScenario(idx) {
+  simIdx = idx;
+  simAnswered = false;
+  const s = SCENARIOS[idx];
+  if (!s) return;
+
+  // Context
+  document.getElementById('simContext').innerHTML = s.description;
+
+  // Info pills
+  const trumpDisp = s.trump === 'NT' ? '<span style="color:#ff5252;font-weight:900;">无主 NT</span>' : s.trump;
+  document.getElementById('simInfo').innerHTML = `
+    <div class="info-pill trump"><i class="fa-solid fa-crown"></i> 主花色：${trumpDisp}</div>
+    <div class="info-pill level"><i class="fa-solid fa-arrow-up-9-1"></i> 当前级别：${s.level}级</div>
+    <div class="info-pill role"><i class="fa-solid fa-user-tag"></i> 你的身份：${s.role}</div>
+  `;
+
+  // Hand cards
+  renderCards(s.hand, document.getElementById('simHand'));
+
+  // Played cards
+  const playedSec = document.getElementById('simPlayedSection');
+  if (s.played && s.played.length > 0) {
+    playedSec.style.display = 'block';
+    renderCards(s.played, document.getElementById('simPlayed'));
+  } else {
+    playedSec.style.display = 'none';
+  }
+
+  // Action buttons
+  document.getElementById('simActions').innerHTML = s.options.map((o, i) =>
+    `<button class="action-btn" id="simBtn${i}" onclick="simSelectAction(${i})">${o.text}</button>`
+  ).join('');
+
+  // Clear feedback
+  document.getElementById('simFeedback').innerHTML = '';
+  document.getElementById('simResetBtn').style.display = 'none';
+
+  // Update list highlight
+  renderScenarioList();
+}
+
+function simSelectAction(idx) {
+  if (simAnswered) return;
+  simAnswered = true;
+  const s = SCENARIOS[simIdx];
+  const opt = s.options[idx];
+
+  // Highlight buttons
+  s.options.forEach((o, i) => {
+    const btn = document.getElementById('simBtn' + i);
+    if (!btn) return;
+    btn.disabled = true;
+    if (i === idx) {
+      btn.classList.add(o.correct ? 'highlight-correct' : 'highlight-wrong');
+    }
+  });
+
+  // Show feedback
+  const fbClass = opt.correct ? 'correct' : 'wrong';
+  const fbTitle = opt.correct ? '✅ 推荐打法' : '⚠️ 分析';
+  document.getElementById('simFeedback').innerHTML = `
+    <div class="feedback-box ${fbClass}">
+      <div class="fb-title">${fbTitle}</div>
+      <div class="fb-body">${opt.feedback}</div>
+      <div class="fb-source"><i class="fa-solid fa-bookmark"></i> 参考来源：${s.source}</div>
+    </div>
+  `;
+  document.getElementById('simResetBtn').style.display = 'inline-block';
+
+  // Subtle glow on correct answer if user picked wrong
+  if (!opt.correct) {
+    const ci = s.options.findIndex(o => o.correct);
+    if (ci >= 0) {
+      const cb = document.getElementById('simBtn' + ci);
+      if (cb) cb.style.boxShadow = '0 0 14px rgba(0,230,118,0.18)';
+    }
+  }
+}
+
+function resetSimulator() {
+  simAnswered = false;
+  loadSimScenario(simIdx);
+  document.getElementById('simFeedback').innerHTML = '';
+  document.getElementById('simResetBtn').style.display = 'none';
+}
+
+function prevScenario() {
+  const newIdx = (simIdx - 1 + SCENARIOS.length) % SCENARIOS.length;
+  loadSimScenario(newIdx);
+}
+function nextScenario() {
+  const newIdx = (simIdx + 1) % SCENARIOS.length;
+  loadSimScenario(newIdx);
+}
+
+// ================================================================
+// 10. FORUM MOCK DATA
+// ================================================================
+const FORUM_POSTS = [
+  { av:'av1', ini:'牌', author:'牌坛老手', title:'【实战复盘】庄家14张主清主打法，大光全过程', tag:'实战复盘', replies:42, likes:128, time:'2小时前' },
+  { av:'av2', ini:'策', author:'策略达人', title:'无主打法深度解析：什么时候该藏A？什么时候不能藏？', tag:'策略讨论', replies:35, likes:97, time:'5小时前' },
+  { av:'av3', ini:'新', author:'新手求教', title:'帮庄方总是不知道什么时候上手，求高手指导', tag:'新手问答', replies:28, likes:56, time:'8小时前' },
+  { av:'av4', ini:'数', author:'数据控', title:'两副牌108张的概率模型：主牌分布与扣底期望计算', tag:'数学分析', replies:19, likes:203, time:'昨天' },
+  { av:'av1', ini:'记', author:'记忆大师', title:'记牌训练30天心得：从记不住到算清每一分', tag:'经验分享', replies:51, likes:314, time:'前天' }
+];
+
+function renderForum() {
+  document.getElementById('forumPostList').innerHTML = FORUM_POSTS.map(p => `
+    <div class="forum-post">
+      <div class="fp-avatar ${p.av}">${p.ini}</div>
+      <div class="fp-body">
+        <div class="fp-title">${p.title}</div>
+        <div class="fp-meta">
+          <span><i class="fa-regular fa-user"></i> ${p.author}</span>
+          <span><i class="fa-regular fa-comment"></i> ${p.replies} 回复</span>
+          <span><i class="fa-regular fa-heart"></i> ${p.likes}</span>
+          <span><i class="fa-regular fa-clock"></i> ${p.time}</span>
+        </div>
+      </div>
+      <span class="fp-tag">${p.tag}</span>
+    </div>
+  `).join('');
+}
+
+// ================================================================
+// 11. BOOTSTRAP — waits for both DOM + marked (or fallback) ready
+// ================================================================
+let domReady = false;
+let bootDone = false;
+
+document.addEventListener('DOMContentLoaded', function() {
+  domReady = true;
+  tryBootstrap();
+});
+
+function bootstrap() {
+  bootDone = true;
+  tryBootstrap();
+}
+
+function tryBootstrap() {
+  if (!domReady || !bootDone) return;
+
+  try {
+    // Re-read markdown content (DOM is ready now)
+    var basicEl = document.getElementById('md-basic-rules');
+    var advEl = document.getElementById('md-advanced-rules');
+    if (basicEl) mdBasicRaw = basicEl.textContent;
+    if (advEl) mdAdvRaw = advEl.textContent;
+
+    // Render basic rules (default visible panel)
+    renderMarkdown(mdBasicRaw,
+      document.getElementById('mdBasicContent'),
+      document.getElementById('tocBasicList'),
+      document.getElementById('tocBasic'));
+    document.getElementById('panel-basic')._rendered = true;
+
+    // Initialize simulator
+    renderScenarioList();
+    loadSimScenario(0);
+
+    // Initialize forum
+    renderForum();
+
+    console.log('[升级训练器] 初始化完成' + (markedReady ? ' (marked.js)' : ' (内建解析器)'));
+  } catch(e) {
+    console.error('[升级训练器] 初始化失败:', e);
+    // Emergency fallback: show raw markdown
+    var bc = document.getElementById('mdBasicContent');
+    if (bc && !bc.innerHTML.trim()) {
+      bc.innerHTML = '<pre style="white-space:pre-wrap;font-size:13px;color:#bcc8d4;">' +
+        (mdBasicRaw || '加载失败').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
+    }
+  }
+}
+
+
+
+// ================================================================
+// GAME ENGINE (merged from game.html)
+// ================================================================
 'use strict';
 // ================================================================
 // CONSTANTS
@@ -338,14 +2557,14 @@ function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Mat
 // GAME STATE
 // ================================================================
 const G={
-  phase:'wait', // wait|bid|exchange|play|hand_end|game_over
+  phase:'wait', // wait|deal|bid|exchange|play|hand_end|game_over
   hands:[[],[],[],[]],
   bottom:[],
   trumpSuit:null, // 'S'|'H'|'C'|'D', null=NT
   levelRank:2,
   nsLevel:2, ewLevel:2,
-  declarerTeam:'NS', // 'NS' or 'EW'
-  declarer:0,
+  declarerTeam:null, // 'NS' or 'EW', null=first game
+  declarer:-1,
   curPlayer:0,
   leadPlayer:0,
   trickCards:[], // [{player, cards:[]}]
@@ -358,6 +2577,15 @@ const G={
   gameOver:false,
   dumpAttempt:false,
   dumpPenalty:0,
+  // New: progressive dealing + real-time bidding
+  dealDeck:null,
+  dealIndex:0,
+  dealTimer:null,
+  bidState:null, // {bidder, bidType, bidSuit, priority}
+  usedCounters:new Set(),
+  bidWindowTimer:null,
+  playedCards:[], // [{suit, rank}] tracking
+  bottomBonus:0, // extra points from 扣底 (last trick)
 };
 
 function team(p){return(p===PS||p===PN)?'NS':'EW'}
@@ -470,6 +2698,58 @@ function detectStructure(cards){
 // ================================================================
 // LEGAL LEAD PATTERNS (for leading player)
 // ================================================================
+// New: Build card selection preferring pairs first, fill remainder with singles
+function buildPairPreferredPlay(cards,n,ctx){
+  const pairs=findPairs(cards,ctx);
+  const usedIds=new Set();
+  const result=[];
+  for(const p of pairs){
+    if(result.length+2<=n){
+      result.push(...p.cards);
+      p.cards.forEach(c=>usedIds.add(c.id));
+    }
+  }
+  const remaining=cards.filter(c=>!usedIds.has(c.id));
+  const sorted=remaining.sort((a,b)=>ctx==='TRUMP'?getTrumpOrder(b)-getTrumpOrder(a):b.rank-a.rank);
+  const needed=n-result.length;
+  result.push(...sorted.slice(0,needed));
+  return result;
+}
+
+// New: Check if a non-trump card is "clearly winning" (no higher cards remain unplayed)
+function isCardClearlyWinning(card,myHand){
+  if(isTrumpC(card))return false;
+  const suit=card.suit,rank=card.rank;
+  for(let r=rank+1;r<=14;r++){
+    if(r===G.levelRank)continue;
+    let unaccounted=2; // 2 copies from 2 decks
+    for(const c of myHand){if(c.suit===suit&&c.rank===r&&!isTrumpC(c))unaccounted--;}
+    for(const pc of G.playedCards){if(pc.suit===suit&&pc.rank===r)unaccounted--;}
+    if(unaccounted>0)return false;
+  }
+  return true;
+}
+
+// New: Count how many higher cards of the same suit are still out there
+function getRemainingHigherCount(card,myHand){
+  if(isTrumpC(card))return 999;
+  const suit=card.suit,rank=card.rank;
+  let count=0;
+  for(let r=rank+1;r<=14;r++){
+    if(r===G.levelRank)continue;
+    let remaining=2;
+    for(const c of myHand){if(c.suit===suit&&c.rank===r&&!isTrumpC(c))remaining--;}
+    for(const pc of G.playedCards){if(pc.suit===suit&&pc.rank===r)remaining--;}
+    count+=Math.max(0,remaining);
+  }
+  return count;
+}
+
+// Helper: sum of card values for sorting discards (trump uses getTrumpOrder, non-trump uses rank)
+function cardValueSum(cards){
+  return cards.reduce((s,c)=>s+(isTrumpC(c)?getTrumpOrder(c)+100:c.rank),0);
+}
+
 function getLeadPatterns(hand){
   const pats=[];
   // Singles
@@ -509,7 +2789,19 @@ function getFollowOptions(hand,ledCards,ledSuit,isTrumpLead){
         const matched=opts.filter(o=>detectStructure(o.cards).type==='tractor');
         if(matched.length>0)return matched; // MUST play a trump tractor
       }
-      return opts; // Can't match – play any n trump
+      // Can't match structure
+      if(ledStruct.type==='tractor'){
+        // Tractor non-match: must play pairs first, then fill with smallest (规则:必须优先出对子)
+        const pp=findPairs(myT,'TRUMP');
+        const used=new Set();const res=[];
+        for(const p of pp){if(res.length+2<=n){res.push(...p.cards);p.cards.forEach(c=>used.add(c.id));}}
+        const rem=myT.filter(c=>!used.has(c.id)).sort((a,b)=>getTrumpOrder(a)-getTrumpOrder(b));
+        res.push(...rem.slice(0,n-res.length));
+        return [{cards:res,noMatch:true}];
+      }
+      // Pair non-match: play smallest trump (贴主牌不浪费大牌)
+      const smallest=[...myT].sort((a,b)=>getTrumpOrder(a)-getTrumpOrder(b)).slice(0,n);
+      return [{cards:smallest,noMatch:true}];
     }
     // Not enough trump: play all + fill with smallest non-trump (can't win)
     const fill=hand.filter(c=>!isTrumpC(c)).sort((a,b)=>a.rank-b.rank).slice(0,n-myT.length);
@@ -528,9 +2820,20 @@ function getFollowOptions(hand,ledCards,ledSuit,isTrumpLead){
       const matched=opts.filter(o=>detectStructure(o.cards).type==='tractor');
       if(matched.length>0)return matched; // MUST play a tractor
     }
-    // Can't match structure – play any n suit cards (贴牌, won't win)
+    // Can't match structure
     if(ledStruct.type==='single')return opts; // All singles from getStructuredPlays
-    return [{cards:suitCards.slice(0,n),noMatch:true}];
+    if(ledStruct.type==='tractor'){
+      // Tractor non-match: must play pairs first, then fill with smallest (规则:必须优先出对子)
+      const pp=findPairs(suitCards,ledSuit);
+      const used=new Set();const res=[];
+      for(const p of pp){if(res.length+2<=n){res.push(...p.cards);p.cards.forEach(c=>used.add(c.id));}}
+      const rem=suitCards.filter(c=>!used.has(c.id)).sort((a,b)=>a.rank-b.rank);
+      res.push(...rem.slice(0,n-res.length));
+      return [{cards:res,noMatch:true}];
+    }
+    // Pair non-match: play smallest suit cards
+    const smallestSC=[...suitCards].sort((a,b)=>a.rank-b.rank).slice(0,n);
+    return [{cards:smallestSC,noMatch:true}];
   }
 
   // Have some suit cards but not enough
@@ -590,9 +2893,8 @@ function getStructuredPlays(cards,n,ctx){
       if(all.length===n)opts.push({cards:all});
     }
   }
-  // Fallback: largest n cards
-  const sorted=[...cards].sort((a,b)=>ctx==='TRUMP'?getTrumpOrder(b)-getTrumpOrder(a):b.rank-a.rank);
-  if(!opts.some(o=>o.cards.length===n))opts.push({cards:sorted.slice(0,n)});
+  // Fallback: prefer pairs first, fill remainder with singles
+  if(!opts.some(o=>o.cards.length===n))opts.push({cards:buildPairPreferredPlay(cards,n,ctx)});
   return opts;
 }
 
@@ -644,9 +2946,12 @@ function aiBid(hand){
   }
   const jl=hand.filter(c=>c.isJoker||c.rank===G.levelRank).length;
   if(jl*4>bs){bs=jl*4;best='NT'}
-  return bs>=8?{suit:best==='NT'?null:best,score:bs}:null;
+  // Dynamic threshold based on hand size (partial hand during dealing)
+  const fraction=hand.length/25;
+  const threshold=Math.max(4,Math.floor(12*fraction));
+  return bs>=threshold?{suit:best==='NT'?null:best,score:bs}:null;
 }
-function isTrumpC2(c,suit){if(c.isJoker||c.rank===G.levelRank||c.suit===suit)return true;return false}
+function isTrumpC2(c,suit){if(c.isJoker||c.rank===G.levelRank||c.suit===suit)return true;return false}function isTrumpC2(c,suit){if(c.isJoker||c.rank===G.levelRank||c.suit===suit)return true;return false}
 
 function aiBury(hand){
   const cs=[...hand];
@@ -654,25 +2959,51 @@ function aiBury(hand){
     const at=isTrumpC(a),bt=isTrumpC(b);
     if(at&&!bt)return -1;if(!at&&bt)return 1;
     if(at&&bt)return getTrumpOrder(b)-getTrumpOrder(a);
-    const ak=(a.rank>=12?5:0)+(a.pts>0?-2:0);
-    const bk=(b.rank>=12?5:0)+(b.pts>0?-2:0);
-    return bk-ak;
+    // Non-trump: keep high-rank cards and point cards; bury low non-point cards
+    const aKeep=(a.rank>=13?10:0)+(a.rank>=11?3:0)+(a.pts>0?5:0);
+    const bKeep=(b.rank>=13?10:0)+(b.rank>=11?3:0)+(b.pts>0?5:0);
+    return bKeep-aKeep;
   });
   return cs.slice(-8);
 }
 
 function aiLead(hand,pl){
   const pats=getLeadPatterns(hand);if(pats.length===0)return {cards:[hand[0]],type:'single'};
-  // Prefer tractors > pairs > Aces > small
-  const tractors=pats.filter(p=>p.type==='tractor');if(tractors.length&&Math.random()<0.6)return tractors[0];
-  const pairs=pats.filter(p=>p.type==='pair');if(pairs.length&&Math.random()<0.5)return pairs[Math.floor(Math.random()*pairs.length)];
-  const aces=pats.filter(p=>p.type==='single'&&p.cards[0].rank===14&&!isTrumpC(p.cards[0]));
-  if(aces.length&&Math.random()<0.7)return aces[0];
-  const nonT=pats.filter(p=>p.type==='single'&&!isTrumpC(p.cards[0]));
-  if(nonT.length){nonT.sort((a,b)=>b.cards[0].rank-a.cards[0].rank);return nonT[Math.floor(Math.random()*Math.min(3,nonT.length))]}
-  const ts=pats.filter(p=>p.type==='single'&&isTrumpC(p.cards[0]));
-  ts.sort((a,b)=>getTrumpOrder(a.cards[0])-getTrumpOrder(b.cards[0]));
-  return ts[0];
+  // 1. Tractors: lead strongest
+  const tractors=pats.filter(p=>p.type==='tractor');
+  if(tractors.length>0){
+    const nonTT=tractors.filter(t=>!t.isTrump);
+    if(nonTT.length>0)return nonTT[0];
+    return tractors[0];
+  }
+  // 2. Pairs: prefer clearly-winning non-trump pairs, then trump pairs
+  const pairs=pats.filter(p=>p.type==='pair');
+  if(pairs.length>0){
+    const nonTP=pairs.filter(p=>p.suit);
+    for(const np of nonTP){if(isCardClearlyWinning(np.cards[0],hand))return np;}
+    if(nonTP.length>0&&Math.random()<0.7){nonTP.sort((a,b)=>b.cards[0].rank-a.cards[0].rank);return nonTP[0];}
+    const tP=pairs.filter(p=>p.isTrump);if(tP.length>0)return tP[0];
+    return pairs[0];
+  }
+  // 3. Non-trump singles: only lead if clearly winning
+  const nonTS=pats.filter(p=>p.type==='single'&&!isTrumpC(p.cards[0]));
+  const winningS=nonTS.filter(p=>isCardClearlyWinning(p.cards[0],hand));
+  if(winningS.length>0){winningS.sort((a,b)=>b.cards[0].rank-a.cards[0].rank);return winningS[0];}
+  // 4. Aces are always strong leads
+  const aces=nonTS.filter(p=>p.cards[0].rank===14);
+  if(aces.length>0)return aces[0];
+  // 5. Strong non-A singles (K/Q) with few higher remaining
+  const strongNonT=nonTS.filter(p=>{const rem=getRemainingHigherCount(p.cards[0],hand);return rem<=2&&p.cards[0].rank>=12;});
+  if(strongNonT.length>0&&Math.random()<0.5){strongNonT.sort((a,b)=>b.cards[0].rank-a.cards[0].rank);return strongNonT[0];}
+  // 6. No good non-trump: lead trump - small trump first (钓主/调主)
+  const trumpS=pats.filter(p=>p.type==='single'&&isTrumpC(p.cards[0]));
+  if(trumpS.length>0){
+    trumpS.sort((a,b)=>getTrumpOrder(a.cards[0])-getTrumpOrder(b.cards[0]));
+    const nonJoker=trumpS.filter(p=>!p.cards[0].isJoker);
+    if(nonJoker.length>0)return nonJoker[0];
+    return trumpS[0];
+  }
+  return pats[0];
 }
 
 function aiFollow(hand,ledCards,ledSuit,isTrumpLead,pl){
@@ -686,26 +3017,76 @@ function aiFollow(hand,ledCards,ledSuit,isTrumpLead,pl){
     const b=bestCard(G.trickCards[i].cards,G.trickSuit);
     if(compareCards(b,a,G.trickSuit)>0)curBest=G.trickCards[i];
   }
+  const opponentWinning=curBest&&team(curBest.player)!==team(pl);
   const partnerWinning=curBest&&team(curBest.player)===team(pl)&&curBest.player!==pl;
-  // If partner is winning, play point cards (跑分/贴分)
+  // Helper: pick best discard/discard-like option
+  // preferPts=true → 贴分 (teammate winning); false → avoid points (opponent/self winning)
+  const pickDiscard=(disc,preferPts)=>{
+    if(preferPts){
+      const withPts=disc.filter(o=>o.cards.some(c=>c.pts>0));
+      if(withPts.length){withPts.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));return withPts[0];}
+    }else{
+      const noPts=disc.filter(o=>!o.cards.some(c=>c.pts>0));
+      if(noPts.length){noPts.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));return noPts[0];}
+    }
+    disc.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));
+    return disc[0];
+  };
+
+  // Case 1: Partner is winning — play points, else smallest (贴分)
   if(partnerWinning){
     const withPts=opts.filter(o=>o.cards.some(c=>c.pts>0));
-    if(withPts.length)return withPts[0];
-    // No points to drop, play smallest follow
-    const follow=opts.filter(o=>!o.isKill&&!o.isDiscard);
-    if(follow.length){follow.sort((a,b)=>a.cards[0].rank-b.cards[0].rank);return follow[0]}
+    if(withPts.length){withPts.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));return withPts[0];}
+    const follow=opts.filter(o=>!o.isKill&&!o.isDiscard&&!o.noMatch);
+    if(follow.length){follow.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));return follow[0];}
+    const disc=opts.filter(o=>o.isDiscard||o.noMatch);
+    if(disc.length)return pickDiscard(disc,true);
     return opts[0];
   }
-  // Normal follow
-  const follow=opts.filter(o=>!o.isKill&&!o.isDiscard);
-  if(follow.length){follow.sort((a,b)=>a.cards[0].rank-b.cards[0].rank);return follow[0]}
-  // Can kill: only if there are points in the trick
-  const kills=opts.filter(o=>o.isKill);
-  if(kills.length&&trickPts>0&&!isDec)return kills[0];
-  if(kills.length&&trickPts>0&&isDec&&!partnerWinning)return kills[0];
-  // Discard
-  const disc=opts.filter(o=>o.isDiscard);
-  if(disc.length)return disc[0];
+  // Case 2: Opponent is winning — try to overtake, else avoid points
+  if(opponentWinning){
+    const follow=opts.filter(o=>!o.isKill&&!o.isDiscard&&!o.noMatch);
+    if(follow.length>0){
+      const overtake=follow.filter(o=>{
+        const myB=bestCard(o.cards,G.trickSuit);
+        const theirB=bestCard(curBest.cards,G.trickSuit);
+        return compareCards(myB,theirB,G.trickSuit)>0;
+      });
+      if(overtake.length>0&&trickPts>0){
+        // Pick smallest overtake card (don't waste big ones)
+        overtake.sort((a,b)=>{const ba=bestCard(a.cards,G.trickSuit),bb=bestCard(b.cards,G.trickSuit);return compareCards(ba,bb,G.trickSuit);});
+        return overtake[0];
+      }
+      if(overtake.length>0&&trickPts===0&&Math.random()<0.3){
+        overtake.sort((a,b)=>{const ba=bestCard(a.cards,G.trickSuit),bb=bestCard(b.cards,G.trickSuit);return compareCards(ba,bb,G.trickSuit);});
+        return overtake[0];
+      }
+      // Can't overtake — play smallest, avoid dumping points
+      const noPts=follow.filter(o=>!o.cards.some(c=>c.pts>0));
+      if(noPts.length){noPts.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));return noPts[0];}
+      follow.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));
+      return follow[0];
+    }
+    // Can only kill or discard — kill if trick has points (smallest kill first)
+    const kills=opts.filter(o=>o.isKill);
+    if(kills.length&&trickPts>0){
+      kills.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));
+      for(const k of kills){
+        const kB=bestCard(k.cards,G.trickSuit);
+        const cB=bestCard(curBest.cards,G.trickSuit);
+        if(compareCards(kB,cB,G.trickSuit)>0)return k;
+      }
+      return kills[0];
+    }
+    const disc=opts.filter(o=>o.isDiscard||o.noMatch);
+    if(disc.length)return pickDiscard(disc,false);
+    return opts[0];
+  }
+  // Case 3: I am winning — play small, avoid dumping points
+  const follow=opts.filter(o=>!o.isKill&&!o.isDiscard&&!o.noMatch);
+  if(follow.length){follow.sort((a,b)=>cardValueSum(a.cards)-cardValueSum(b.cards));return follow[0];}
+  const disc=opts.filter(o=>o.isDiscard||o.noMatch);
+  if(disc.length)return pickDiscard(disc,false);
   return opts[0];
 }
 
@@ -758,49 +3139,114 @@ function startNewGame(){
 function startNewHand(){
   G.levelRank=G.declarerTeam? (G.declarerTeam==='NS'?G.nsLevel:G.ewLevel) : 2;
   const deck=shuffle(makeDeck());G.hands=[[],[],[],[]];
-  for(let i=0;i<100;i++)G.hands[i%4].push(deck[i]);
   G.bottom=deck.slice(100,108);
   G.trumpSuit=null;G.selected=[];G.trickCards=[];G.trickSuit=null;
   G.trickCount=0;G.defScore=0;G.history=[];G.lastWinner=null;
-  G.dumpPenalty=0;
-  for(let i=0;i<4;i++)G.hands[i].sort((a,b)=>getCardOrder(a)-getCardOrder(b));
+  G.dumpPenalty=0;G.bottomBonus=0;
+  G.dealDeck=deck;G.dealIndex=0;
+  G.bidState=null;G.usedCounters=new Set();
+  G.playedCards=[];
+  G.phase='deal';
   updateUI();clearPlayed();
-  // Declarer is predetermined by position rules; first game starts randomly
-  G.phase='bid';G.curPlayer=G.declarer>=0?G.declarer:Math.floor(Math.random()*4);
-  if(G.declarer>=0)addMsg(`${PNAME[G.declarer]} 坐庄 (${G.declarerTeam}队打${G.levelRank})，请叫主`);
-  if(G.curPlayer===PS)showBidPanel();else setTimeout(()=>aiDoBid(),500+Math.random()*400);
+  if(G.declarerTeam===null){
+    setMsg('第一局 — 发牌中，请抢叫主牌！');
+    addMsg('第一局开始，发牌抢叫主牌…');
+  }else{
+    setMsg(`${PNAME[G.declarer]} 坐庄 (${G.declarerTeam}队打${G.levelRank})，发牌竞争主牌…`);
+    addMsg(`${PNAME[G.declarer]} 坐庄 (${G.declarerTeam}队打${G.levelRank})，发牌竞争主牌`);
+  }
+  document.getElementById('trickInfo').innerHTML='<span style="font-size:11px;color:var(--cyan)">发牌 0/100</span>';
+  showDealBidPanel();
+  dealStep();
 }
 
-function aiDoBid(){
-  const p=G.curPlayer;const d=aiBid(G.hands[p]);
-  if(d&&d.score>=10){
-    G.trumpSuit=d.suit;G.declarer=p;G.declarerTeam=team(p);
-    G.levelRank=G.declarerTeam==='NS'?G.nsLevel:G.ewLevel;
-    addMsg(`${PNAME[p]} 叫主: ${d.suit?SUIT_CN[d.suit]:'无主(NT)'}`);
-    updateUI();finishBid();return;
-  }
-  addMsg(`${PNAME[p]} 不叫`);G.curPlayer=(G.curPlayer+1)%4;
-  const passes=G.history.filter(h=>h.txt&&h.txt.includes('不叫')).length;
-  if(passes>=4){
-    let bp=1,bs=-1,bt=null;
-    for(let i=0;i<4;i++){const d2=aiBid(G.hands[i]);if(d2&&d2.score>bs){bs=d2.score;bp=i;bt=d2.suit}}
-    if(bt===undefined)bt=SUITS[Math.floor(Math.random()*4)];
-    G.trumpSuit=bt;G.declarer=bp;G.declarerTeam=team(bp);
-    G.levelRank=G.declarerTeam==='NS'?G.nsLevel:G.ewLevel;
-    addMsg(`全员不叫！系统指定${PNAME[bp]}为庄家`);
-    finishBid();return;
-  }
+// ================================================================
+// PROGRESSIVE DEALING + REAL-TIME BIDDING
+// ================================================================
+function dealStep(){
+  if(G.phase!=='deal')return;
+  if(G.dealIndex>=100){finishDealing();return}
+  // Deal one card
+  const p=G.dealIndex%4;
+  G.hands[p].push(G.dealDeck[G.dealIndex]);
+  G.dealIndex++;
+  G.hands[PS].sort((a,b)=>getCardOrder(a)-getCardOrder(b));
   updateUI();
-  if(G.curPlayer===PS)showBidPanel();else setTimeout(()=>aiDoBid(),400+Math.random()*300);
+  updateDealBidPanel();
+  for(let ai=1;ai<4;ai++)aiEvaluateBidDuringDeal(ai);
+  const remaining=100-G.dealIndex;
+  const speed=remaining<20?150:60;
+  G.dealTimer=setTimeout(()=>dealStep(),speed);
 }
 
-function finishBid(){
-  G.phase='exchange';G.hands[G.declarer].push(...G.bottom);
+function finishDealing(){
+  clearTimeout(G.dealTimer);
+  G.hands[PS].sort((a,b)=>getCardOrder(a)-getCardOrder(b));
+  updateUI();updateDealBidPanel();
+  if(G.bidState){setMsg('发牌完成！'+PNAME[G.bidState.bidder]+' 叫主成功');}
+  else{setMsg('发牌完成！无人叫主');}
+  document.getElementById('trickInfo').innerHTML='<span style="font-size:18px;color:var(--gold);font-weight:700">⏳ 5秒</span>';
+  for(let ai=1;ai<4;ai++)aiEvaluateBidDuringDeal(ai);
+  // 5-second countdown with display
+  let sec=5;
+  const doCountdown=()=>{
+    if(G.phase!=='deal')return;
+    sec--;
+    if(sec>0){
+      const bidInfo=G.bidState?'<br><span style="font-size:12px;color:var(--text-primary)">'+(G.bidState.bidSuit?SUIT_EMOJI[G.bidState.bidSuit]+SUIT_CN[G.bidState.bidSuit]:'NT无主')+' — '+PNAME[G.bidState.bidder]+' 叫主</span>':'';
+      document.getElementById('trickInfo').innerHTML='<span style="font-size:18px;color:var(--gold);font-weight:700">⏳ '+sec+'秒</span>'+bidInfo;
+      G.bidWindowTimer=setTimeout(doCountdown,1000);
+    }else{
+      if(G.bidState){confirmBidAndProceed();}
+      else{autoAssignTrump();}
+    }
+  };
+  G.bidWindowTimer=setTimeout(doCountdown,1000);
+}
+
+function autoAssignTrump(){
+  clearTimeout(G.bidWindowTimer);
+  let bp=1,bs=-1,bt=null;
+  for(let i=0;i<4;i++){const d=aiBid(G.hands[i]);if(d&&d.score>bs){bs=d.score;bp=i;bt=d.suit}}
+  if(bt===undefined)bt=SUITS[Math.floor(Math.random()*4)];
+  G.trumpSuit=bt;
+  if(G.declarerTeam===null){
+    G.declarer=bp;G.declarerTeam=team(bp);
+    G.levelRank=G.declarerTeam==='NS'?G.nsLevel:G.ewLevel;
+    addMsg('全员不叫！系统指定'+PNAME[bp]+'为庄家，主牌'+(bt?SUIT_CN[bt]:'NT无主'));
+  }else{
+    addMsg('全员不叫！系统指定主牌'+(bt?SUIT_CN[bt]:'NT无主'));
+  }
+  proceedToExchange();
+}
+
+function confirmBidAndProceed(){
+  clearTimeout(G.bidWindowTimer);
+  const bs=G.bidState;
+  G.trumpSuit=bs.bidSuit;
+  if(G.declarerTeam===null){
+    G.declarer=bs.bidder;
+    G.declarerTeam=team(bs.bidder);
+    G.levelRank=G.declarerTeam==='NS'?G.nsLevel:G.ewLevel;
+  }
+  const suitDesc=bs.bidSuit?SUIT_CN[bs.bidSuit]:'NT无主';
+  const typeDesc=bs.bidType==='single_level'?'单张叫主':
+    bs.bidType==='pair_level'?'级牌对反主':
+    bs.bidType==='pair_small'?'小王对反主':'大王对反主';
+  addMsg(PNAME[bs.bidder]+' '+typeDesc+': '+suitDesc);
+  proceedToExchange();
+}
+
+function proceedToExchange(){
+  G.phase='exchange';
+  G.hands[G.declarer].push(...G.bottom);
   G.hands[G.declarer].sort((a,b)=>getCardOrder(a)-getCardOrder(b));
-  if(G.declarer===PS){showExchangePanel()}else{
+  document.getElementById('modalArea').innerHTML='';
+  document.getElementById('trickInfo').innerHTML='';
+  if(G.declarer===PS){showExchangePanel();}else{
     const buried=aiBury(G.hands[G.declarer]);
     G.hands[G.declarer]=G.hands[G.declarer].filter(c=>!buried.some(b=>b.id===c.id));
-    G.bottom=buried;addMsg(`${PNAME[G.declarer]} 扣底8张完成`);
+    G.bottom=buried;addMsg(PNAME[G.declarer]+' 扣底8张完成');
     startPlay();
   }
 }
@@ -1014,11 +3460,30 @@ function finishTrick(){
   });
   G.trickCount++;
   if(team(winner.player)!==G.declarerTeam)G.defScore+=pts;
+  // Track played cards for AI memory
+  for(const tc of G.trickCards){for(const c of tc.cards)G.playedCards.push({suit:c.suit,rank:c.rank});}
   addMsg(`第${G.trickCount}轮: ${PNAME[winner.player]}赢`+(pts>0?` (${pts}分)`:''));
+  const winnerCardsForBottom=[...winner.cards];
   G.curPlayer=winner.player;G.leadPlayer=winner.player;
   G.trickCards=[];G.trickSuit=null;
   clearPlayed();updateUI();
-  if(G.hands.every(h=>h.length===0)){setTimeout(()=>endHand(),500);return}
+  if(G.hands.every(h=>h.length===0)){
+    // Last trick: bottom card scoring (底牌计分)
+    const bottomPts=G.bottom.reduce((s,c)=>s+c.pts,0);
+    if(bottomPts>0&&team(winner.player)!==G.declarerTeam){
+      const ws=detectStructure(winnerCardsForBottom);
+      let n=0;
+      if(ws.type==='pair')n=1;
+      else if(ws.type==='tractor')n=ws.pairs.length;
+      const mult=Math.pow(2,n+1);
+      const extra=bottomPts*mult;
+      G.defScore+=extra;G.bottomBonus=extra;
+      addMsg(`🔓 扣底！${PNAME[winner.player]}用${n}对赢下最后一轮，底牌${bottomPts}分 ×${mult} = ${extra}分`);
+    }else if(bottomPts>0){
+      G.bottomBonus=0;
+      addMsg(`🛡️ 保底成功！底牌${bottomPts}分守住`);
+    }
+    setTimeout(()=>endHand(),500);return}
   if(G.curPlayer===PS){enablePlay(true);setMsg('你赢了上一轮，请出牌')}
   else{enablePlay(false);setMsg(`${PNAME[G.curPlayer]} 出牌中…`);setTimeout(()=>aiDoLead(),500)}
 }
@@ -1065,11 +3530,11 @@ function endHand(){
     <table style="width:100%;margin:8px 0;font-size:12px;color:var(--text-primary)">
       <tr><td style="color:var(--text-dim)">上局庄家</td><td>${declarerName} (${PNAME[oldDeclarer]})</td></tr>
       <tr><td style="color:var(--text-dim)">主牌</td><td>${G.trumpSuit?SUIT_CN[G.trumpSuit]+SUIT_EMOJI[G.trumpSuit]:'NT无主'}</td></tr>
-      <tr><td style="color:var(--text-dim)">闲家得分</td><td style="color:var(--gold);font-weight:700">${s}分</td></tr>
+      <tr><td style="color:var(--text-dim)">闲家得分</td><td style="color:var(--gold);font-weight:700">${s}分${G.bottomBonus>0?(` (含扣底+${G.bottomBonus}分)`):(G.bottom.length>0&&G.bottom.reduce((a,c)=>a+c.pts,0)>0?' (保底)':'')}</td></tr>
       <tr><td style="color:var(--text-dim)">结果</td><td style="color:var(--cyan);font-weight:700">${resultText} → ${changeDesc}</td></tr>
       <tr><td style="color:var(--text-dim)">NS级别</td><td>${oldNs}级 → <b style="color:var(--green)">${G.nsLevel}级</b>${oldNs!==G.nsLevel?' <span style="color:var(--green)">▲'+ (G.nsLevel-oldNs) +'</span>':''}</td></tr>
       <tr><td style="color:var(--text-dim)">EW级别</td><td>${oldEw}级 → <b style="color:var(--green)">${G.ewLevel}级</b>${oldEw!==G.ewLevel?' <span style="color:var(--green)">▲'+ (G.ewLevel-oldEw) +'</span>':''}</td></tr>
-      <tr><td style="color:var(--text-dim)">下局庄家</td><td style="font-weight:700">${nextDeclarerTeam} — ${PNAME[G.declarer]} (由他叫主)</td></tr>
+      <tr><td style="color:var(--text-dim)">下局庄家</td><td style="font-weight:700">${nextDeclarerTeam} — ${PNAME[G.declarer]} (发牌竞价决定主牌)</td></tr>
       <tr><td style="color:var(--text-dim)">下局打</td><td style="font-weight:700;color:var(--cyan)">${nextLevel}级</td></tr>
     </table>`;
 
@@ -1080,6 +3545,8 @@ function endHand(){
 
   settlementHTML+=`<button class="ctrl-btn primary" onclick="document.getElementById('modalArea').innerHTML='';nextHand()" style="margin-top:8px">
     <i class="fa-solid fa-forward"></i> 下一局 (打${nextLevel})</button>
+    <button class="ctrl-btn" onclick="document.getElementById('modalArea').innerHTML='';switchToRules()" style="margin-top:4px">
+    <i class="fa-solid fa-book"></i> 返回规则</button>
     </div></div>`;
 
   document.getElementById('modalArea').innerHTML=settlementHTML;
@@ -1092,7 +3559,7 @@ function endHand(){
   document.getElementById('btnHint').disabled=true;
 }
 
-function resetGame(){G.gameOver=false;document.getElementById('btnNext').style.display='none';document.getElementById('modalArea').innerHTML='';startNewGame()}
+function resetGame(){clearTimeout(G.dealTimer);clearTimeout(G.bidWindowTimer);G.gameOver=false;document.getElementById('btnNext').style.display='none';document.getElementById('modalArea').innerHTML='';startNewGame()}
 function nextHand(){document.getElementById('btnNext').style.display='none';document.getElementById('modalArea').innerHTML='';startNewHand()}
 
 // ================================================================
@@ -1270,46 +3737,156 @@ function showQuery(){
 }
 
 // ================================================================
-// BIDDING / EXCHANGE PANELS
+// BIDDING / EXCHANGE PANELS// ================================================================
 // ================================================================
-function showBidPanel(){
+// REAL-TIME DEALING BID PANEL
+// ================================================================
+function showDealBidPanel(){
   const modal=document.getElementById('modalArea');
+  if(G.phase!=='deal')return;
   const hand=G.hands[PS];
-  let btns='';
+  const bs=G.bidState;
+  const priorityMap={'single_level':0,'pair_level':1,'pair_small':2,'pair_big':3};
+  const currentPrio=bs?priorityMap[bs.bidType]:-1;
+
+  let html='<div class="inline-panel"><h3><i class="fa-solid fa-gavel"></i> 叫主/反主 — 发牌中可随时出价</h3>';
+  html+='<p style="font-size:10px;color:var(--text-dim);margin-bottom:4px">手牌: '+hand.length+'张 | 级牌: '+G.levelRank+' | ';
+  if(bs){
+    html+='当前: '+PNAME[bs.bidder]+' 叫 '+(bs.bidSuit?SUIT_CN[bs.bidSuit]+SUIT_EMOJI[bs.bidSuit]:'NT无主');
+    html+=' ('+(bs.bidType==='single_level'?'单张':bs.bidType==='pair_level'?'级牌对':bs.bidType==='pair_small'?'小王对':'大王对')+')';
+  }else{html+='当前: 无人叫主';}
+  html+='</p><div class="btn-row">';
+
+  // Suit buttons - enabled if player has level card
   for(const s of SUITS){
-    const n=hand.filter(c=>c.isJoker||c.rank===G.levelRank||c.suit===s).length;
-    const p=findPairs(hand.filter(c=>isTrumpC2(c,s)),'TRUMPX').length;
-    btns+=`<button class="ctrl-btn" onclick="doBid('${s}')">${SUIT_EMOJI[s]} ${SUIT_CN[s]} (主${n}对${p})</button>`;
+    const hasLvl=hand.some(c=>c.rank===G.levelRank&&c.suit===s&&!c.isJoker);
+    let disabled=!hasLvl;
+    if(currentPrio>=1&&bs&&bs.bidder!==PS)disabled=true;
+    html+='<button class="ctrl-btn'+(disabled?'':' primary')+'" '+(disabled?'disabled':'')+
+      ' onclick="doDealBid(\''+s+'\',\'single_level\')">'+SUIT_EMOJI[s]+' '+SUIT_CN[s]+(hasLvl?' ✓':' ✗')+'</button>';
   }
-  const jl=hand.filter(c=>c.isJoker||c.rank===G.levelRank).length;
-  btns+=`<button class="ctrl-btn" onclick="doBid('NT')">🃏 无主NT (硬主${jl})</button>`;
-  btns+=`<button class="ctrl-btn danger" onclick="doPass()">不叫</button>`;
 
-  modal.innerHTML=`<div class="inline-panel"><h3><i class="fa-solid fa-gavel"></i> 叫主 — 请选择主牌</h3><div class="btn-row">${btns}</div></div>`;
+  // Level pair counter-bid
+  const levelPairs=findPairs(hand.filter(c=>c.rank===G.levelRank&&SUITS.includes(c.suit)),'TRUMP');
+  let hasLvlPair=levelPairs.length>0;
+  if(hasLvlPair&&bs&&bs.bidSuit){hasLvlPair=levelPairs.some(p=>p.suit!==bs.bidSuit);}
+  const lvlPairSuit=hasLvlPair?(levelPairs.find(p=>!bs||p.suit!==bs.bidSuit)||levelPairs[0]).suit:'';
+  const lvlPairDisabled=!hasLvlPair||G.usedCounters.has('pair_level')||currentPrio>=1;
+  html+='<button class="ctrl-btn'+(lvlPairDisabled?'':' primary')+'" '+(lvlPairDisabled?'disabled':'')+
+    ' onclick="doDealBid(\''+lvlPairSuit+'\',\'pair_level\')">🃏 级牌对反主'+(hasLvlPair?'':' ✗')+(G.usedCounters.has('pair_level')?' (已用)':'')+'</button>';
+
+  // Small joker pair
+  const hasSmPair=hand.filter(c=>c.isSmall).length>=2;
+  const smDisabled=!hasSmPair||G.usedCounters.has('pair_small')||currentPrio>=2;
+  html+='<button class="ctrl-btn'+(smDisabled?'':' primary')+'" '+(smDisabled?'disabled':'')+
+    ' onclick="doDealBid(null,\'pair_small\')">🃟 小王对反主(NT)'+(hasSmPair?'':' ✗')+(G.usedCounters.has('pair_small')?' (已用)':'')+'</button>';
+
+  // Big joker pair
+  const hasBgPair=hand.filter(c=>c.isBig).length>=2;
+  const bgDisabled=!hasBgPair||G.usedCounters.has('pair_big')||currentPrio>=3;
+  html+='<button class="ctrl-btn'+(bgDisabled?'':' primary')+'" '+(bgDisabled?'disabled':'')+
+    ' onclick="doDealBid(null,\'pair_big\')">🃁 大王对反主(NT)'+(hasBgPair?'':' ✗')+(G.usedCounters.has('pair_big')?' (已用)':'')+'</button>';
+
+  html+='</div></div>';
+  modal.innerHTML=html;
 }
 
-function doBid(suit){
-  G.trumpSuit=suit==='NT'?null:suit;G.declarer=PS;G.declarerTeam='NS';
-  G.levelRank=G.nsLevel;
-  addMsg(`你叫主: ${suit==='NT'?'无主(NT)':SUIT_CN[suit]}`);
-  document.getElementById('modalArea').innerHTML='';
-  finishBid();
-}
-function doPass(){
-  addMsg('你不叫');G.curPlayer=(G.curPlayer+1)%4;
-  document.getElementById('modalArea').innerHTML='';
-  if(G.curPlayer===PS){
-    // All passed, force auto
-    let bp=1,bs=-1,bt=null;
-    for(let i=0;i<4;i++){const d=aiBid(G.hands[i]);if(d&&d.score>bs){bs=d.score;bp=i;bt=d.suit}}
-    if(bt===undefined)bt=SUITS[Math.floor(Math.random()*4)];
-    G.trumpSuit=bt;G.declarer=bp;G.declarerTeam=team(bp);
-    G.levelRank=G.declarerTeam==='NS'?G.nsLevel:G.ewLevel;
-    addMsg(`全员不叫！系统指定${PNAME[bp]}为庄家`);
-    finishBid();
-  }else{setTimeout(()=>aiDoBid(),400)}
+function updateDealBidPanel(){
+  if(G.phase==='deal'){
+    showDealBidPanel();
+    // Center bid banner
+    const el=document.getElementById('trickInfo');
+    let html='<span style="font-size:11px;color:var(--cyan)">发牌 '+G.dealIndex+'/100</span>';
+    if(G.bidState){
+      const bs=G.bidState;
+      const suitStr=bs.bidSuit?SUIT_EMOJI[bs.bidSuit]+' '+SUIT_CN[bs.bidSuit]:'NT无主';
+      html+='<br><span style="font-size:16px;color:var(--gold);font-weight:700">'+suitStr+'</span>';
+      html+='<br><span style="font-size:10px;color:var(--text-secondary)">'+PNAME[bs.bidder]+' 叫主</span>';
+    }
+    el.innerHTML=html;
+  }
 }
 
+function doDealBid(bidSuit,bidType){
+  const priorityMap={'single_level':0,'pair_level':1,'pair_small':2,'pair_big':3};
+  const priority=priorityMap[bidType];
+  const hand=G.hands[PS];
+  if(G.bidState&&priority<=priorityMap[G.bidState.bidType]){setMsg('只能以更高优先级反主！');return;}
+  if(bidType==='single_level'){
+    if(!hand.some(c=>c.rank===G.levelRank&&c.suit===bidSuit&&!c.isJoker)){setMsg('你没有'+SUIT_CN[bidSuit]+'级牌！');return;}
+  }else if(bidType==='pair_level'){
+    const pairs=findPairs(hand.filter(c=>c.rank===G.levelRank&&SUITS.includes(c.suit)),'TRUMP');
+    if(pairs.length===0){setMsg('你没有级牌对子！');return;}
+    const diff=pairs.filter(p=>!G.bidState||p.suit!==G.bidState.bidSuit);
+    bidSuit=(diff.length>0?diff[0]:pairs[0]).suit;
+  }else if(bidType==='pair_small'){
+    if(hand.filter(c=>c.isSmall).length<2){setMsg('你没有小王对子！');return;}
+  }else if(bidType==='pair_big'){
+    if(hand.filter(c=>c.isBig).length<2){setMsg('你没有大王对子！');return;}
+  }
+  G.bidState={bidder:PS,bidType,bidSuit,priority};
+  if(bidType!=='single_level')G.usedCounters.add(bidType);
+  const suitDesc=bidSuit?SUIT_CN[bidSuit]:'NT无主';
+  addMsg('你'+(bidType==='single_level'?'叫主':'反主')+': '+suitDesc);
+  showDealBidPanel();
+}
+
+function aiEvaluateBidDuringDeal(p){
+  if(G.phase!=='deal')return;
+  const hand=G.hands[p];
+  if(hand.length===0)return;
+  const priorityMap={'single_level':0,'pair_level':1,'pair_small':2,'pair_big':3};
+  const currentPrio=G.bidState?priorityMap[G.bidState.bidType]:-1;
+  // Threshold counts for AI bidding
+  const trumpCount=hand.filter(c=>c.isJoker||c.rank===G.levelRank).length;
+  const levelCount=hand.filter(c=>c.rank===G.levelRank).length;
+  // Big joker pair (priority 3) - need >= 6 trump cards
+  if(!G.usedCounters.has('pair_big')&&currentPrio<3){
+    if(hand.filter(c=>c.isBig).length>=2&&trumpCount>=6){
+      G.bidState={bidder:p,bidType:'pair_big',bidSuit:null,priority:3};
+      G.usedCounters.add('pair_big');
+      addMsg(PNAME[p]+' 大王对反主！NT无主');
+      showDealBidPanel();return;
+    }
+  }
+  // Small joker pair (priority 2) - need >= 6 trump cards
+  if(!G.usedCounters.has('pair_small')&&currentPrio<2){
+    if(hand.filter(c=>c.isSmall).length>=2&&trumpCount>=6){
+      G.bidState={bidder:p,bidType:'pair_small',bidSuit:null,priority:2};
+      G.usedCounters.add('pair_small');
+      addMsg(PNAME[p]+' 小王对反主！NT无主');
+      showDealBidPanel();return;
+    }
+  }
+  // Level pair counter-bid (priority 1) - need >= 5 level cards
+  if(!G.usedCounters.has('pair_level')&&currentPrio<1){
+    const lvlPairs=findPairs(hand.filter(c=>c.rank===G.levelRank&&SUITS.includes(c.suit)),'TRUMP');
+    if(lvlPairs.length>0&&levelCount>=5){
+      const currentSuit=G.bidState?G.bidState.bidSuit:null;
+      const diff=lvlPairs.filter(lp=>!currentSuit||lp.suit!==currentSuit);
+      const chosen=diff.length>0?diff[0]:lvlPairs[0];
+      G.bidState={bidder:p,bidType:'pair_level',bidSuit:chosen.suit,priority:1};
+      G.usedCounters.add('pair_level');
+      addMsg(PNAME[p]+' 级牌对反主: '+SUIT_CN[chosen.suit]);
+      showDealBidPanel();return;
+    }
+  }
+  // Single level card bid (priority 0) - only if no current bid, need >= 6 cards of that suit
+  if(!G.bidState){
+    const bid=aiBid(hand);
+    if(bid&&bid.score>=8&&bid.suit!=='NT'){
+      const suitCount=hand.filter(c=>c.suit===bid.suit&&!c.isJoker).length;
+      if(suitCount>=6){
+        G.bidState={bidder:p,bidType:'single_level',bidSuit:bid.suit,priority:0};
+        addMsg(PNAME[p]+' 叫主: '+SUIT_CN[bid.suit]);
+        showDealBidPanel();
+      }
+    }
+  }
+}
+
+
+// ================================================================
 function showExchangePanel(){
   const modal=document.getElementById('modalArea');
   G.selected=[];
@@ -1365,14 +3942,35 @@ function showOverlay(title,msg){
 }
 
 // ================================================================
-// INIT
+// INIT (lazy — triggered on first visit to game panel)
 // ================================================================
-document.getElementById('btnNext').style.display='none';
-document.getElementById('btnPlay').disabled=true;
-document.getElementById('btnDump').disabled=true;
-document.getElementById('btnHint').disabled=true;
-setMsg('欢迎！游戏初始化中…');
-setTimeout(()=>startNewGame(),400);
+let _gameInited=false;
+function initGame(){
+  if(_gameInited)return;
+  _gameInited=true;
+  document.getElementById('btnNext').style.display='none';
+  document.getElementById('btnPlay').disabled=true;
+  document.getElementById('btnDump').disabled=true;
+  document.getElementById('btnHint').disabled=true;
+  setMsg('欢迎！游戏初始化中…');
+  startNewGame();
+}
+
+// ================================================================
+// NAVIGATION: Switch back to rules while preserving game state
+// ================================================================
+function switchToRules(){
+  document.body.classList.remove('in-game');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  const panel=document.getElementById('panel-basic');
+  if(panel)panel.classList.add('active');
+  const tab=document.querySelector('[data-panel="panel-basic"]');
+  if(tab)tab.classList.add('active');
+  currentPanel='panel-basic';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
 </script>
+
 </body>
 </html>
